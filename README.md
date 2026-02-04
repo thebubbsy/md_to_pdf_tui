@@ -18,7 +18,7 @@
 
 1.  Clone the repository:
     ```bash
-    git clone https://github.com/YOUR_USERNAME/md_to_pdf_tui.git
+    git clone https://github.com/thebubbsy/md_to_pdf_tui.git
     cd md_to_pdf_tui
     ```
 
