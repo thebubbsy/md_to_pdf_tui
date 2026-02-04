@@ -229,7 +229,7 @@ async def generate_pdf_core(md_path: Path, pdf_path: Path, settings: dict, log_f
     
     if log_fn: log_fn(f"Parsing Markdown: {md_path.name}")
     try:
-        md_text = md_path.read_text(encoding="utf-8")
+        md_text = await asyncio.get_running_loop().run_in_executor(None, md_path.read_text, "utf-8")
     except UnicodeDecodeError:
         raise ValueError(f"The file '{md_path.name}' is not a valid text file. Please ensure you are converting a Markdown (.md) file, not a binary file like PDF.")
     if prog_fn: prog_fn(20)
@@ -272,7 +272,7 @@ async def generate_png_core(md_path: Path, png_path: Path, settings: dict, log_f
     theme_name = settings.get("theme", "GitHub Light")
     if log_fn: log_fn(f"Rendering PNG ({theme_name}): {md_path.name}")
     
-    md_text = md_path.read_text(encoding="utf-8")
+    md_text = await asyncio.get_running_loop().run_in_executor(None, md_path.read_text, "utf-8")
     html_content = create_html_content(md_text, settings)
     
     tmp_h = md_path.with_suffix(".tmp.html")
@@ -402,7 +402,7 @@ async def generate_docx_core(md_path: Path, docx_path: Path, log_fn=print, prog_
     if prog_fn: prog_fn(20)
 
     try:
-        md_text = md_path.read_text(encoding="utf-8")
+        md_text = await asyncio.get_running_loop().run_in_executor(None, md_path.read_text, "utf-8")
     except UnicodeDecodeError:
         raise ValueError(f"The file '{md_path.name}' is not a valid text file. Please ensure you are converting a Markdown (.md) file, not a binary file like PDF or Image.")
     
