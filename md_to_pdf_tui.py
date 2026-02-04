@@ -422,10 +422,13 @@ async def generate_docx_core(md_path: Path, docx_path: Path, log_fn=print, prog_
     alert_type = None
     alert_content = []
     
+    # Pre-compile the regex
+    alert_pattern = re.compile(r"^\s*>\s*\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\]", re.IGNORECASE)
+
     for line in lines:
         # Check for alert header with flexible whitespace
         # matches: > [!NOTE],   > [!NOTE], >[!NOTE]
-        match = re.match(r"^\s*>\s*\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\]", line, re.IGNORECASE)
+        match = alert_pattern.match(line)
         if match:
             # If we were already in an alert, close it first
             if in_alert:
