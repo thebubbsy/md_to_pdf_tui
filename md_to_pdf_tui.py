@@ -18,6 +18,9 @@ from typing import Optional
 import re
 import tempfile
 import uuid
+import urllib.request
+import shutil
+import hashlib
 
 # Textual imports (only if needed)
 try:
@@ -25,7 +28,7 @@ try:
     from textual.containers import Container, Horizontal, Vertical, ScrollableContainer, VerticalScroll
     from textual.widgets import (
         Button, Footer, Header, Input, Label, RichLog, Static, 
-        Select, Switch, ProgressBar, Rule, TabbedContent, TabPane, Markdown
+        Select, Switch, ProgressBar, Rule, TabbedContent, TabPane, Markdown, TextArea, ContentSwitcher
     )
     from textual.binding import Binding
     from textual.screen import ModalScreen
@@ -159,6 +162,106 @@ def open_folder_dialog() -> Optional[str]:
         return folder if folder else None
     except Exception:
         return None
+
+def process_resources(md_text: str, temp_dir: Path) -> str:
+    """
+    Scans markdown text for images and resources.
+    Downloads remote images to temp_dir.
+    Copies local images to temp_dir.
+    Updates markdown references to point to local files in temp_dir.
+    """
+    def _hash_url(url: str) -> str:
+        return hashlib.md5(url.encode()).hexdigest()
+
+    # Find ![alt](url)
+    # Regex for standard markdown images. Handles optional title: ![alt](url "title")
+    md_img_pattern = re.compile(r'!\[([^\]]*)\]\s*\(\s*([^\s)]+)(?:\s+["\'].*?["\'])?\s*\)')
+
+    # Find <img src="...">
+    # Regex for HTML images
+    html_img_pattern = re.compile(r'<img\s+[^>]*src=["\']([^"\']+)["\'][^>]*>')
+
+    def replace_link(match):
+        alt = match.group(1)
+        url = match.group(2)
+
+        # Determine if it's a URL or local path
+        if url.startswith("http://") or url.startswith("https://"):
+            try:
+                # Download
+                ext = Path(url).suffix or ".png"
+                if "?" in ext: ext = ext.split("?")[0]
+                local_filename = f"remote_{_hash_url(url)}{ext}"
+                local_path = temp_dir / local_filename
+
+                if not local_path.exists():
+                    req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+                    with urllib.request.urlopen(req, timeout=15) as response, open(local_path, 'wb') as out_file:
+                        shutil.copyfileobj(response, out_file)
+
+                # Since we are running conversion in the same dir as the md file (temp_dir),
+                # just the filename is enough.
+                return f'![{alt}]({local_path.name})'
+            except Exception as e:
+                # print(f"Failed to download {url}: {e}")
+                return match.group(0) # Keep original if failed
+        else:
+            # Local file
+            try:
+                src_path = Path(url).resolve()
+                if src_path.exists():
+                    dest_path = temp_dir / src_path.name
+                    if not dest_path.exists():
+                        shutil.copy2(src_path, dest_path)
+                    return f'![{alt}]({dest_path.name})'
+                return match.group(0)
+            except Exception as e:
+                # print(f"Failed to process local file {url}: {e}")
+                return match.group(0)
+
+    def replace_html_src(match):
+        url = match.group(1)
+        full_tag = match.group(0)
+
+        if url.startswith("http://") or url.startswith("https://"):
+            try:
+                ext = Path(url).suffix or ".png"
+                if "?" in ext: ext = ext.split("?")[0]
+                local_filename = f"remote_{_hash_url(url)}{ext}"
+                local_path = temp_dir / local_filename
+
+                if not local_path.exists():
+                    req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+                    with urllib.request.urlopen(req, timeout=15) as response, open(local_path, 'wb') as out_file:
+                        shutil.copyfileobj(response, out_file)
+
+                return full_tag.replace(url, local_path.name)
+            except:
+                return full_tag
+        else:
+            try:
+                src_path = Path(url).resolve()
+                if src_path.exists():
+                    dest_path = temp_dir / src_path.name
+                    if not dest_path.exists():
+                        shutil.copy2(src_path, dest_path)
+                    return full_tag.replace(url, dest_path.name)
+                return full_tag
+            except:
+                return full_tag
+
+    new_text = md_img_pattern.sub(replace_link, md_text)
+    new_text = html_img_pattern.sub(replace_html_src, new_text)
+
+    return new_text
+
+def is_pure_mermaid(text: str) -> bool:
+    """
+    Checks if the text contains only a mermaid block.
+    """
+    stripped = text.strip()
+    return (stripped.startswith("```mermaid") and stripped.endswith("```")) or \
+           (stripped.startswith("~~~mermaid") and stripped.endswith("~~~"))
 
 # --- Core Conversion Logic (Decoupled from TUI) ---
 # --- Core Conversion Logic (Decoupled from TUI) ---
@@ -599,8 +702,8 @@ if HAS_TEXTUAL:
         """
         BINDINGS = [Binding("ctrl+o", "browse_file"), Binding("ctrl+r", "convert"), Binding("ctrl+d", "convert_docx"), Binding("ctrl+p", "open_pdf"), Binding("f1", "show_help")]
 
-        def __init__(self, cli_file=None):
-            super().__init__(); self.cli_file = cli_file; self.settings = load_settings(); self.recent_files = load_recent_files(); self.last_output_path = None
+        def __init__(self, cli_file=None, paste_content=None):
+            super().__init__(); self.cli_file = cli_file; self.paste_content = paste_content; self.settings = load_settings(); self.recent_files = load_recent_files(); self.last_output_path = None; self.use_paste_source = bool(paste_content)
 
         def compose(self) -> ComposeResult:
             yield Static("MDPDFM PRO v3.0 - FORENSIC EDITION", id="app-header")
@@ -613,6 +716,8 @@ if HAS_TEXTUAL:
                                 yield Label("Input:"); yield Input(id="md-input", placeholder="Select file or enter path..."); yield Button("Browse", id="browse-btn")
                             with Horizontal(classes="row"):
                                 yield Label("Output Folder:"); yield Input(value=self.settings.get("output_folder", ""), id="out-input", placeholder="Leave empty to save alongside input file"); yield Button("Browse", id="browse-out-btn")
+                            with Horizontal(classes="row"):
+                                yield Label("Use Paste:"); yield Switch(value=False, id="source-switch")
                         with Container(classes="section"):
                             yield Static("🎨 AESTHETICS")
                             with Horizontal(classes="row"):
@@ -625,7 +730,10 @@ if HAS_TEXTUAL:
                                 yield Label("Single Pg:"); yield Switch(value=self.settings.get("unlimited_height", True), id="unlimited-height-switch")
                     with Vertical(id="log-area"):
                         yield ProgressBar(id="progress-bar", show_eta=False); yield RichLog(id="log")
-                with TabPane("👁️ PREVIEW"): yield Markdown(id="md-preview")
+                with TabPane("👁️ PREVIEW"):
+                    with ContentSwitcher(initial="md-preview", id="preview-switcher"):
+                        yield Markdown(id="md-preview")
+                        yield TextArea(id="paste-area")
             with Horizontal(id="button-bar"): 
                 yield Button("📄 Open PDF", id="open-btn")
                 yield Button("📝 Export DOCX", id="docx-btn")
@@ -633,6 +741,10 @@ if HAS_TEXTUAL:
 
         def on_mount(self):
             if self.cli_file: self.query_one("#md-input", Input).value = str(Path(self.cli_file).resolve())
+            if self.paste_content:
+                self.query_one("#paste-area", TextArea).text = self.paste_content
+                self.query_one("#source-switch", Switch).value = True
+                self.query_one("#preview-switcher", ContentSwitcher).current = "paste-area"
         
         def on_select_changed(self, event: Select.Changed):
             if event.select.id == "theme-select":
@@ -642,6 +754,12 @@ if HAS_TEXTUAL:
         def on_switch_changed(self, event: Switch.Changed):
             if event.switch.id == "a4-width-switch": self.settings["a4_fixed_width"] = event.value
             elif event.switch.id == "unlimited-height-switch": self.settings["unlimited_height"] = event.value
+            elif event.switch.id == "source-switch":
+                self.use_paste_source = event.value
+                if event.value:
+                    self.query_one("#preview-switcher", ContentSwitcher).current = "paste-area"
+                else:
+                    self.query_one("#preview-switcher", ContentSwitcher).current = "md-preview"
             save_settings(self.settings)
 
         def on_input_changed(self, event: Input.Changed):
@@ -669,35 +787,85 @@ if HAS_TEXTUAL:
             def log(m): self.call_from_thread(lambda: log_w.write(m))
             def prog(v): self.call_from_thread(lambda: self.query_one("#progress-bar", ProgressBar).update(progress=v))
             try:
-                inp = self.query_one("#md-input", Input).value.strip()
-                if not inp:
-                    log("[yellow]⚠️  Please select a markdown file first![/]")
-                    self.call_from_thread(self.query_one("#md-input", Input).focus)
-                    return
-                ipath = Path(inp).resolve()
-                
-                # Determine output path
-                out_dir_str = self.query_one("#out-input", Input).value.strip()
-                if out_dir_str:
-                    out_dir = Path(out_dir_str)
-                    out_dir.mkdir(parents=True, exist_ok=True)
-                    opath = out_dir / (ipath.stem + ("." + fmt))
-                else:
-                    opath = ipath.with_suffix("." + fmt)
+                if self.use_paste_source:
+                    text_content = self.query_one("#paste-area", TextArea).text
+                    if not text_content.strip():
+                        log("[yellow]⚠️  Paste area is empty![/]")
+                        return
 
-                if fmt == "docx":
-                    loop = asyncio.new_event_loop()
-                    asyncio.set_event_loop(loop)
-                    # Pass self.settings to ensure theme is used
-                    loop.run_until_complete(generate_docx_core(ipath, opath, log, prog, settings=self.settings))
-                    log(f"[green]✓ DOCX Export Done: {opath.name}[/]")
+                    # Determine Output Path
+                    out_dir_str = self.query_one("#out-input", Input).value.strip()
+                    if out_dir_str:
+                        out_dir = Path(out_dir_str)
+                    else:
+                        out_dir = Path(self.settings.get("output_folder", str(Path.home() / "Documents")))
+                    out_dir.mkdir(parents=True, exist_ok=True)
+
+                    filename = f"pasted_export_{uuid.uuid4().hex[:8]}.{fmt}"
+                    opath = out_dir / filename
+
+                    # Create temp dir for resources
+                    with tempfile.TemporaryDirectory() as temp_dir:
+                        temp_path = Path(temp_dir)
+                        log(f"Processing resources in temporary env...")
+                        processed_text = process_resources(text_content, temp_path)
+
+                        # Write processed markdown to temp file
+                        tmp_md = temp_path / f"source_{uuid.uuid4()}.md"
+                        tmp_md.write_text(processed_text, encoding="utf-8")
+
+                        ipath = tmp_md
+
+                        if fmt == "docx":
+                            loop = asyncio.new_event_loop()
+                            asyncio.set_event_loop(loop)
+                            loop.run_until_complete(generate_docx_core(ipath, opath, log, prog, settings=self.settings))
+                            log(f"[green]✓ DOCX Export Done: {opath.name}[/]")
+                        else:
+                            loop = asyncio.new_event_loop()
+                            asyncio.set_event_loop(loop)
+                            # Check for pure mermaid
+                            if is_pure_mermaid(processed_text) and fmt != "docx":
+                                # We can export to PNG if pure mermaid, but if user asked for PDF, give PDF.
+                                # However, user said "we can offer a png".
+                                # For now we stick to requested format.
+                                pass
+
+                            loop.run_until_complete(generate_pdf_core(ipath, opath, self.settings, log, prog))
+                            log(f"[green]✓ PDF Export Done: {opath.name}[/]")
+
+                        self.last_output_path = opath
+
                 else:
-                    loop = asyncio.new_event_loop()
-                    asyncio.set_event_loop(loop)
-                    loop.run_until_complete(generate_pdf_core(ipath, opath, self.settings, log, prog))
-                    log(f"[green]✓ PDF Export Done: {opath.name}[/]")
-                
-                self.last_output_path = opath
+                    inp = self.query_one("#md-input", Input).value.strip()
+                    if not inp:
+                        log("[yellow]⚠️  Please select a markdown file first![/]")
+                        self.call_from_thread(self.query_one("#md-input", Input).focus)
+                        return
+                    ipath = Path(inp).resolve()
+
+                    # Determine output path
+                    out_dir_str = self.query_one("#out-input", Input).value.strip()
+                    if out_dir_str:
+                        out_dir = Path(out_dir_str)
+                        out_dir.mkdir(parents=True, exist_ok=True)
+                        opath = out_dir / (ipath.stem + ("." + fmt))
+                    else:
+                        opath = ipath.with_suffix("." + fmt)
+
+                    if fmt == "docx":
+                        loop = asyncio.new_event_loop()
+                        asyncio.set_event_loop(loop)
+                        # Pass self.settings to ensure theme is used
+                        loop.run_until_complete(generate_docx_core(ipath, opath, log, prog, settings=self.settings))
+                        log(f"[green]✓ DOCX Export Done: {opath.name}[/]")
+                    else:
+                        loop = asyncio.new_event_loop()
+                        asyncio.set_event_loop(loop)
+                        loop.run_until_complete(generate_pdf_core(ipath, opath, self.settings, log, prog))
+                        log(f"[green]✓ PDF Export Done: {opath.name}[/]")
+
+                    self.last_output_path = opath
             except Exception as e: log(f"[red]Error: {e}[/]")
 
 async def run_gallery_mode(md_path: Path) -> None:
@@ -716,70 +884,110 @@ async def run_gallery_mode(md_path: Path) -> None:
 
 # --- Entry Point ---
 def main():
-    if len(sys.argv) > 1:
-        arg = sys.argv[1]
-        if arg in ["--help", "-h"]:
+    content_arg = None
+    if "--content" in sys.argv:
+        try:
+            idx = sys.argv.index("--content")
+            if idx + 1 < len(sys.argv):
+                content_arg = sys.argv[idx + 1]
+                del sys.argv[idx:idx+2]
+        except ValueError:
+            pass
+
+    if len(sys.argv) > 1 or content_arg:
+        if len(sys.argv) > 1 and sys.argv[1] in ["--help", "-h"]:
             print("Usage: python md_to_pdf_tui.py [input.md] [output] [flags]")
-            print("Flags: --headless, --docx, --png, --gallery, --open, --light, --dark")
+            print("Flags: --headless, --docx, --png, --gallery, --open, --light, --dark, --content 'markdown text'")
             return
         
         if "--headless" in sys.argv:
             print("--- MDPDFM Background Engine starting ---")
-            md_path = Path(arg).resolve()
-            if not md_path.exists():
-                print(f"Error: {md_path} not found")
-                sys.exit(1)
             
-            pdf_path = None
-            if len(sys.argv) > 2 and not sys.argv[2].startswith("--"):
-                pdf_path = Path(sys.argv[2]).resolve()
-            
-            is_docx = "--docx" in sys.argv or (pdf_path and pdf_path.suffix.lower() == ".docx")
-            is_png = "--png" in sys.argv or "--gallery" in sys.argv or (pdf_path and pdf_path.suffix.lower() == ".png")
-            
-            # theme gallery mode
-            if "--gallery" in sys.argv:
-                asyncio.run(run_gallery_mode(md_path))
-                return
+            temp_dir = None
+            md_path = None
 
-            if not pdf_path:
-                ext = ".docx" if is_docx else (".png" if is_png else ".pdf")
-                pdf_path = md_path.with_suffix(ext)
+            try:
+                if content_arg:
+                    temp_dir = tempfile.mkdtemp()
+                    temp_path = Path(temp_dir)
+                    print("Processing content resources...")
+                    processed_text = process_resources(content_arg, temp_path)
+                    md_path = temp_path / f"content_{uuid.uuid4().hex[:8]}.md"
+                    md_path.write_text(processed_text, encoding="utf-8")
+                elif len(sys.argv) > 1 and not sys.argv[1].startswith("--"):
+                    md_path = Path(sys.argv[1]).resolve()
+                    if not md_path.exists():
+                        print(f"Error: {md_path} not found")
+                        sys.exit(1)
+                else:
+                    print("Error: No input file or content provided.")
+                    sys.exit(1)
 
-            settings = load_settings()
-            # Try to match a theme from CLI args, otherwise fallback to settings or default
-            chosen_theme = None
-            if len(sys.argv) > 1:
+                pdf_path = None
+                # Determine output path logic considering content_arg shifting
+                potential_args = [a for a in sys.argv[1:] if not a.startswith("--")]
+
+                if content_arg:
+                    if potential_args:
+                        pdf_path = Path(potential_args[0]).resolve()
+                else:
+                    if len(potential_args) > 1:
+                         pdf_path = Path(potential_args[1]).resolve()
+
+                is_docx = "--docx" in sys.argv or (pdf_path and pdf_path.suffix.lower() == ".docx")
+                is_png = "--png" in sys.argv or "--gallery" in sys.argv or (pdf_path and pdf_path.suffix.lower() == ".png")
+
+                # theme gallery mode
+                if "--gallery" in sys.argv:
+                    asyncio.run(run_gallery_mode(md_path))
+                    return
+
+                if not pdf_path:
+                    ext = ".docx" if is_docx else (".png" if is_png else ".pdf")
+                    if content_arg:
+                        pdf_path = Path(f"output_{uuid.uuid4().hex[:8]}{ext}").resolve()
+                    else:
+                        pdf_path = md_path.with_suffix(ext)
+
+                settings = load_settings()
+                chosen_theme = None
                 for t in THEMES.keys():
                     slug = "--" + t.lower().replace(" ", "-")
                     if slug in sys.argv:
                         chosen_theme = t
                         break
-            
-            if chosen_theme:
-                settings["theme"] = theme_name = chosen_theme
 
-            if is_docx:
-                asyncio.run(generate_docx_core(md_path, pdf_path, settings=settings))
-            elif is_png:
-                asyncio.run(generate_png_core(md_path, pdf_path, settings=settings))
-            else:
-                asyncio.run(generate_pdf_core(md_path, pdf_path, settings))
-            
-            print(f"Success: {pdf_path}")
-            
-            if "--open" in sys.argv:
-                print(f"Opening: {pdf_path}")
-                os.startfile(str(pdf_path.resolve()))
+                if chosen_theme:
+                    settings["theme"] = theme_name = chosen_theme
+
+                if is_docx:
+                    asyncio.run(generate_docx_core(md_path, pdf_path, settings=settings))
+                elif is_png:
+                    asyncio.run(generate_png_core(md_path, pdf_path, settings=settings))
+                else:
+                    asyncio.run(generate_pdf_core(md_path, pdf_path, settings))
+
+                print(f"Success: {pdf_path}")
+
+                if "--open" in sys.argv:
+                    print(f"Opening: {pdf_path}")
+                    os.startfile(str(pdf_path.resolve()))
+            finally:
+                if temp_dir:
+                    try: shutil.rmtree(temp_dir)
+                    except: pass
                 
             return
 
         if HAS_TEXTUAL:
-            MarkdownToPdfApp(cli_file=arg).run()
+            file_arg = None
+            if len(sys.argv) > 1 and not sys.argv[1].startswith("--"):
+                file_arg = sys.argv[1]
+            MarkdownToPdfApp(cli_file=file_arg, paste_content=content_arg).run()
         else:
             print("Error: Textual not installed. Use --headless.")
     elif HAS_TEXTUAL:
-        MarkdownToPdfApp().run()
+        MarkdownToPdfApp(paste_content=content_arg).run()
     else:
         print("Usage: python md_to_pdf_tui.py [input.md] --headless")
 
