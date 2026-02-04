@@ -1,0 +1,9 @@
+__pycache__/
+*.pdf
+*.docx
+*.png
+*.tmp.html
+*.tmp.md
+.md_to_pdf/
+settings.json
+recent_files.json

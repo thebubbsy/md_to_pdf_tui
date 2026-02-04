@@ -1,0 +1,4 @@
+textual>=0.1.0
+playwright>=1.0.0
+markdown-it-py>=2.0.0
+mdit-py-plugins>=0.3.0
