@@ -866,6 +866,7 @@ if HAS_TEXTUAL:
 
                         self.last_output_path = opath
                         self.call_from_thread(enable_btn)
+                        self.call_from_thread(lambda: self.query_one("#open-btn", Button).update(disabled=False))
 
                 else:
                     inp = self.query_one("#md-input", Input).value.strip()
@@ -898,6 +899,7 @@ if HAS_TEXTUAL:
 
                     self.last_output_path = opath
                     self.call_from_thread(enable_btn)
+                    self.call_from_thread(lambda: self.query_one("#open-btn", Button).update(disabled=False))
             except Exception as e: log(f"[red]Error: {e}[/]")
 
 async def run_gallery_mode(md_path: Path) -> None:
