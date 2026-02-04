@@ -377,6 +377,7 @@ async def generate_pdf_core(md_path: Path, pdf_path: Path, settings: dict, log_f
                 for i, element in enumerate(elements):
                     d_path = out_dir / f"{stem}_diagram_{i+1}.png"
                     await element.screenshot(path=str(d_path))
+                    if log_fn: log_fn(f"Saved diagram: {d_path}")
 
         opts = {"path": str(pdf_path.resolve()), "print_background": True}
         if u_height:
@@ -654,6 +655,7 @@ async def generate_docx_core(md_path: Path, docx_path: Path, log_fn=print, prog_
                      try:
                          d_out = docx_path.parent / f"{docx_path.stem}_diagram_{i+1}.png"
                          shutil.copy2(img_path, d_out)
+                         if log_fn: log_fn(f"Saved diagram: {d_out}")
                      except Exception as e:
                          if log_fn: log_fn(f"Failed to save diagram png: {e}")
 
@@ -870,7 +872,6 @@ if HAS_TEXTUAL:
 
                         self.last_output_path = opath
                         self.call_from_thread(enable_btn)
-                        self.call_from_thread(lambda: self.query_one("#open-btn", Button).update(disabled=False))
 
                 else:
                     inp = self.query_one("#md-input", Input).value.strip()
@@ -903,7 +904,6 @@ if HAS_TEXTUAL:
 
                     self.last_output_path = opath
                     self.call_from_thread(enable_btn)
-                    self.call_from_thread(lambda: self.query_one("#open-btn", Button).update(disabled=False))
             except Exception as e: log(f"[red]Error: {e}[/]")
 
 async def run_gallery_mode(md_path: Path) -> None:
