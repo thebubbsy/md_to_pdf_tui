@@ -162,6 +162,23 @@ def open_folder_dialog() -> Optional[str]:
 
 # --- Core Conversion Logic (Decoupled from TUI) ---
 # --- Core Conversion Logic (Decoupled from TUI) ---
+_MD_PARSER = None
+
+def _get_md_parser():
+    global _MD_PARSER
+    if _MD_PARSER is None:
+        _MD_PARSER = markdown_it.MarkdownIt().use(front_matter_plugin).use(footnote_plugin).enable("table")
+
+        def mf(tokens, idx, options, env):
+            t = tokens[idx]
+            m_enabled = env.get("mermaid_enabled", True) if env else True
+            if t.info.strip() == "mermaid" and m_enabled:
+                return f'<div class="m-wrap"><div class="mermaid">{t.content}</div></div>'
+            return f"<pre><code>{t.content}</code></pre>"
+
+        _MD_PARSER.renderer.rules["fence"] = mf
+    return _MD_PARSER
+
 def create_html_content(md_text: str, settings: dict) -> str:
     theme_name = settings.get("theme", "GitHub Light")
     # Fallback if theme name not found
@@ -171,15 +188,8 @@ def create_html_content(md_text: str, settings: dict) -> str:
     c_width = int(settings.get("content_width", 800))
     m_enabled = settings.get("mermaid_enabled", True)
     
-    def mf(tokens, idx, options, env):
-        t = tokens[idx]
-        if t.info.strip() == "mermaid" and m_enabled:
-            return f'<div class="m-wrap"><div class="mermaid">{t.content}</div></div>'
-        return f"<pre><code>{t.content}</code></pre>"
-    
-    it = markdown_it.MarkdownIt().use(front_matter_plugin).use(footnote_plugin).enable("table")
-    it.renderer.rules["fence"] = mf
-    body = it.render(md_text)
+    it = _get_md_parser()
+    body = it.render(md_text, env={"mermaid_enabled": m_enabled})
     
     # Configure Mermaid Theme based on our palette
     m_theme_init = f'''theme: "base",
