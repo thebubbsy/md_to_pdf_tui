@@ -478,7 +478,7 @@ async def render_png_page(browser, md_path: Path, png_path: Path, settings: dict
     if element:
         # Clip to the element size
         await element.screenshot(path=str(png_path.resolve()), scale="device", omit_background=False)
-        if log_fn: log_fn(f"Created: {png_path.name}")
+        if log_fn: log_fn(f"Created: {png_path.resolve()}")
     else:
         if log_fn: log_fn("Error: No Mermaid diagram found to capture.")
 
