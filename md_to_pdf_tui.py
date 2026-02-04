@@ -268,7 +268,7 @@ async def generate_pdf_core(md_path: Path, pdf_path: Path, settings: dict, log_f
         try: os.remove(tmp_h)
         except: pass
 
-async def generate_png_core(md_path: Path, png_path: Path, settings: dict, log_fn=print, prog_fn=None) -> None:
+async def render_png_page(browser, md_path: Path, png_path: Path, settings: dict, log_fn=print, prog_fn=None) -> None:
     theme_name = settings.get("theme", "GitHub Light")
     if log_fn: log_fn(f"Rendering PNG ({theme_name}): {md_path.name}")
     
@@ -279,92 +279,96 @@ async def generate_png_core(md_path: Path, png_path: Path, settings: dict, log_f
     with open(tmp_h, "w", encoding="utf-8") as f:
         f.write(html_content)
         
-    async with async_playwright() as p:
-        browser = await p.chromium.launch()
-        # Use an extreme viewport and device scale for 24K resolution
-        page = await browser.new_page(
-            viewport={"width": 6000, "height": 6000},
-            device_scale_factor=4
-        )
-        
-        # Log console messages with prefix
-        page.on("console", lambda msg: log_fn(f"BROWSER CONSOLE: {msg.text}"))
-        page.on("pageerror", lambda exc: log_fn(f"BROWSER ERROR: {exc}"))
+    # Use an extreme viewport and device scale for 24K resolution
+    page = await browser.new_page(
+        viewport={"width": 6000, "height": 6000},
+        device_scale_factor=4
+    )
 
-        abs_url = f"file:///{str(tmp_h.resolve()).replace(os.sep, '/')}"
-        if log_fn: log_fn(f"Loading: {abs_url}")
-        await page.goto(abs_url, wait_until="networkidle")
+    # Log console messages with prefix
+    page.on("console", lambda msg: log_fn(f"BROWSER CONSOLE: {msg.text}"))
+    page.on("pageerror", lambda exc: log_fn(f"BROWSER ERROR: {exc}"))
+
+    abs_url = f"file:///{str(tmp_h.resolve()).replace(os.sep, '/')}"
+    if log_fn: log_fn(f"Loading: {abs_url}")
+    await page.goto(abs_url, wait_until="networkidle")
+
+    # Wait for mermaid to finish rendering
+    try:
+        if log_fn: log_fn("Waiting for Mermaid SVG (60s timeout)...")
+        # Wait for either a successful render or an error message
+        await page.wait_for_function("""
+            () => document.querySelector('.mermaid svg') ||
+                  document.querySelector('.mermaid-error') ||
+                  document.querySelector('.mermaid[data-processed="true"]')
+        """, timeout=60000)
         
-        # Wait for mermaid to finish rendering
-        try:
-            if log_fn: log_fn("Waiting for Mermaid SVG (60s timeout)...")
-            # Wait for either a successful render or an error message
-            await page.wait_for_function("""
-                () => document.querySelector('.mermaid svg') || 
-                      document.querySelector('.mermaid-error') || 
-                      document.querySelector('.mermaid[data-processed="true"]')
-            """, timeout=60000)
-            
-            # Check for error elements or "Syntax error" in SVG
-            is_error = await page.evaluate("""
+        # Check for error elements or "Syntax error" in SVG
+        is_error = await page.evaluate("""
+            () => {
+                if (document.querySelector('.mermaid-error')) return true;
+                const svg = document.querySelector('.mermaid svg');
+                if (svg && (svg.textContent.includes('Syntax error') || svg.id.includes('error'))) return true;
+                // Some versions use data-processed="error" (hypothetical, but safe to check)
+                if (document.querySelector('.mermaid[data-processed="error"]')) return true;
+                return false;
+            }
+        """)
+
+        if is_error:
+            error_msg = await page.evaluate("""
                 () => {
-                    if (document.querySelector('.mermaid-error')) return true;
+                    const errEl = document.querySelector('.mermaid-error');
+                    if (errEl) return errEl.innerText;
                     const svg = document.querySelector('.mermaid svg');
-                    if (svg && (svg.textContent.includes('Syntax error') || svg.id.includes('error'))) return true;
-                    // Some versions use data-processed="error" (hypothetical, but safe to check)
-                    if (document.querySelector('.mermaid[data-processed="error"]')) return true;
-                    return false;
+                    if (svg) return svg.textContent;
+                    return "Unknown Mermaid Error";
                 }
             """)
+            # Standardized error reporting for terminal detection
+            clean_msg = error_msg.strip().split('\n')[0] # Get just the first line
+            if log_fn:
+                log_fn(f"\n[!] MERMAID RENDER FAILURE [!]")
+                log_fn(f"Reason: {clean_msg}")
+                log_fn(f"Status: ABORTED\n")
             
-            if is_error:
-                error_msg = await page.evaluate("""
-                    () => {
-                        const errEl = document.querySelector('.mermaid-error');
-                        if (errEl) return errEl.innerText;
-                        const svg = document.querySelector('.mermaid svg');
-                        if (svg) return svg.textContent;
-                        return "Unknown Mermaid Error";
-                    }
-                """)
-                # Standardized error reporting for terminal detection
-                clean_msg = error_msg.strip().split('\n')[0] # Get just the first line
-                if log_fn: 
-                    log_fn(f"\n[!] MERMAID RENDER FAILURE [!]")
-                    log_fn(f"Reason: {clean_msg}")
-                    log_fn(f"Status: ABORTED\n")
-                
-                await browser.close()
-                if "--gallery" not in sys.argv:
-                    try: os.remove(tmp_h)
-                    except: pass
-                sys.exit(1)
+            await page.close()
+            if "--gallery" not in sys.argv:
+                try: os.remove(tmp_h)
+                except: pass
+            sys.exit(1)
 
-            await page.wait_for_timeout(2000) # Final stabilization
-        except Exception as e:
-            if log_fn: log_fn(f"Timeout or Error: {e}")
-            # Check if it was a timeout but maybe it still rendered
-            has_svg = await page.evaluate("() => document.querySelectorAll('.mermaid svg').length > 0")
-            if not has_svg:
-                if log_fn: log_fn("FAILED: No SVG generated and no explicit error detected. Probably a silent crash.")
-                await browser.close()
-                sys.exit(1)
-        
-        # Get the first mermaid diagram
-        element = await page.query_selector(".mermaid")
-        if element:
-            # Clip to the element size
-            await element.screenshot(path=str(png_path.resolve()), scale="device", omit_background=False)
-            if log_fn: log_fn(f"Created: {png_path.name}")
-        else:
-            if log_fn: log_fn("Error: No Mermaid diagram found to capture.")
-            
-        await browser.close()
+        await page.wait_for_timeout(2000) # Final stabilization
+    except Exception as e:
+        if log_fn: log_fn(f"Timeout or Error: {e}")
+        # Check if it was a timeout but maybe it still rendered
+        has_svg = await page.evaluate("() => document.querySelectorAll('.mermaid svg').length > 0")
+        if not has_svg:
+            if log_fn: log_fn("FAILED: No SVG generated and no explicit error detected. Probably a silent crash.")
+            await page.close()
+            sys.exit(1)
     
+    # Get the first mermaid diagram
+    element = await page.query_selector(".mermaid")
+    if element:
+        # Clip to the element size
+        await element.screenshot(path=str(png_path.resolve()), scale="device", omit_background=False)
+        if log_fn: log_fn(f"Created: {png_path.name}")
+    else:
+        if log_fn: log_fn("Error: No Mermaid diagram found to capture.")
+
+    await page.close()
+
     # KEEP tmp_h for debugging in gallery mode
     if "--gallery" not in sys.argv:
         try: os.remove(tmp_h)
         except: pass
+
+async def generate_png_core(md_path: Path, png_path: Path, settings: dict, log_fn=print, prog_fn=None) -> None:
+    async with async_playwright() as p:
+        browser = await p.chromium.launch()
+        await render_png_page(browser, md_path, png_path, settings, log_fn, prog_fn)
+        await browser.close()
 
 async def generate_docx_core(md_path: Path, docx_path: Path, log_fn=print, prog_fn=None, settings: dict=None) -> None:
     if log_fn: log_fn(f"Converting to DOCX: {md_path.name}")
@@ -554,6 +558,15 @@ async def generate_docx_core(md_path: Path, docx_path: Path, log_fn=print, prog_
     if prog_fn: prog_fn(100)
     if log_fn: log_fn(f"Created: {docx_path.name}")
 
+async def generate_gallery_core(md_path: Path) -> None:
+    settings = load_settings()
+    async with async_playwright() as p:
+        browser = await p.chromium.launch()
+        for theme in THEMES.keys():
+            settings["theme"] = theme
+            gallery_path = md_path.parent / f"{md_path.stem}_{theme.lower().replace(' ', '_')}.png"
+            await render_png_page(browser, md_path, gallery_path, settings)
+        await browser.close()
 
 
 # --- Textual GUI Wrapper ---
@@ -703,11 +716,7 @@ def main():
             # theme gallery mode
             if "--gallery" in sys.argv:
                 print("--- Gallery Mode: Generating for all themes ---")
-                settings = load_settings()
-                for theme in THEMES.keys():
-                    settings["theme"] = theme
-                    gallery_path = md_path.parent / f"{md_path.stem}_{theme.lower().replace(' ', '_')}.png"
-                    asyncio.run(generate_png_core(md_path, gallery_path, settings))
+                asyncio.run(generate_gallery_core(md_path))
                 print("Gallery generation complete.")
                 return
 
