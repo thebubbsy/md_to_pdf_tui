@@ -127,7 +127,8 @@ def load_settings() -> dict:
         "output_folder": str(Path.home() / "Documents"), 
         "save_html": False, 
         "unlimited_height": True,
-        "a4_fixed_width": True
+        "a4_fixed_width": True,
+        "save_diagrams": False
     }
 
 def save_settings(settings: dict) -> None:
@@ -366,6 +367,17 @@ async def generate_pdf_core(md_path: Path, pdf_path: Path, settings: dict, log_f
         await page.wait_for_timeout(6000)
         if prog_fn: prog_fn(70)
         
+        # Save Diagrams if enabled
+        if settings.get("save_diagrams", False):
+            elements = await page.locator(".mermaid").all()
+            if elements:
+                if log_fn: log_fn(f"Saving {len(elements)} diagrams to separate files...")
+                out_dir = pdf_path.parent
+                stem = pdf_path.stem
+                for i, element in enumerate(elements):
+                    d_path = out_dir / f"{stem}_diagram_{i+1}.png"
+                    await element.screenshot(path=str(d_path))
+
         opts = {"path": str(pdf_path.resolve()), "print_background": True}
         if u_height:
             h = await page.evaluate("document.body.scrollHeight")
@@ -633,6 +645,15 @@ async def generate_docx_core(md_path: Path, docx_path: Path, log_fn=print, prog_
                  await element.screenshot(path=str(img_path))
                  temp_images.append(img_path)
                  temp_files_to_cleanup.append(img_path)
+
+                 # Save to output if enabled
+                 if settings and settings.get("save_diagrams", False):
+                     try:
+                         d_out = docx_path.parent / f"{docx_path.stem}_diagram_{i+1}.png"
+                         shutil.copy2(img_path, d_out)
+                     except Exception as e:
+                         if log_fn: log_fn(f"Failed to save diagram png: {e}")
+
                  if log_fn: log_fn(f"Captured diagram {i+1}")
 
             await browser.close()
@@ -728,14 +749,16 @@ if HAS_TEXTUAL:
                                 yield Label("A4 Lock:"); yield Switch(value=self.settings.get("a4_fixed_width", True), id="a4-width-switch")
                             with Horizontal(classes="row"):
                                 yield Label("Single Pg:"); yield Switch(value=self.settings.get("unlimited_height", True), id="unlimited-height-switch")
+                            with Horizontal(classes="row"):
+                                yield Label("Save Diags:"); yield Switch(value=self.settings.get("save_diagrams", False), id="save-diags-switch")
                     with Vertical(id="log-area"):
-                        yield ProgressBar(id="progress-bar", show_eta=False); yield RichLog(id="log")
-                with TabPane("👁️ PREVIEW"):
+                        yield ProgressBar(id="progress-bar", show_eta=False); yield RichLog(id="log", markup=True)
+                with TabPane("Paste & Preview"):
                     with ContentSwitcher(initial="md-preview", id="preview-switcher"):
                         yield Markdown(id="md-preview")
                         yield TextArea(id="paste-area")
             with Horizontal(id="button-bar"): 
-                yield Button("📄 Open PDF", id="open-btn")
+                yield Button("📄 Open File", id="open-btn", disabled=True)
                 yield Button("📝 Export DOCX", id="docx-btn")
                 yield Button("▶ GENERATE PDF", id="convert-btn")
 
@@ -754,6 +777,7 @@ if HAS_TEXTUAL:
         def on_switch_changed(self, event: Switch.Changed):
             if event.switch.id == "a4-width-switch": self.settings["a4_fixed_width"] = event.value
             elif event.switch.id == "unlimited-height-switch": self.settings["unlimited_height"] = event.value
+            elif event.switch.id == "save-diags-switch": self.settings["save_diagrams"] = event.value
             elif event.switch.id == "source-switch":
                 self.use_paste_source = event.value
                 if event.value:
@@ -786,12 +810,18 @@ if HAS_TEXTUAL:
             log_w = self.query_one("#log", RichLog)
             def log(m): self.call_from_thread(lambda: log_w.write(m))
             def prog(v): self.call_from_thread(lambda: self.query_one("#progress-bar", ProgressBar).update(progress=v))
+            def enable_btn(): self.query_one("#open-btn", Button).disabled = False
+
             try:
                 if self.use_paste_source:
                     text_content = self.query_one("#paste-area", TextArea).text
                     if not text_content.strip():
                         log("[yellow]⚠️  Paste area is empty![/]")
                         return
+
+                    if text_content.strip().startswith("graph T"):
+                         if not text_content.strip().startswith("```"):
+                             text_content = f"```mermaid\n{text_content}\n```"
 
                     # Determine Output Path
                     out_dir_str = self.query_one("#out-input", Input).value.strip()
@@ -820,7 +850,7 @@ if HAS_TEXTUAL:
                             loop = asyncio.new_event_loop()
                             asyncio.set_event_loop(loop)
                             loop.run_until_complete(generate_docx_core(ipath, opath, log, prog, settings=self.settings))
-                            log(f"[green]✓ DOCX Export Done: {opath.name}[/]")
+                            log(f"[green]✓ DOCX Export Done: {str(opath)}[/]")
                         else:
                             loop = asyncio.new_event_loop()
                             asyncio.set_event_loop(loop)
@@ -832,9 +862,10 @@ if HAS_TEXTUAL:
                                 pass
 
                             loop.run_until_complete(generate_pdf_core(ipath, opath, self.settings, log, prog))
-                            log(f"[green]✓ PDF Export Done: {opath.name}[/]")
+                            log(f"[green]✓ PDF Export Done: {str(opath)}[/]")
 
                         self.last_output_path = opath
+                        self.call_from_thread(enable_btn)
 
                 else:
                     inp = self.query_one("#md-input", Input).value.strip()
@@ -858,14 +889,15 @@ if HAS_TEXTUAL:
                         asyncio.set_event_loop(loop)
                         # Pass self.settings to ensure theme is used
                         loop.run_until_complete(generate_docx_core(ipath, opath, log, prog, settings=self.settings))
-                        log(f"[green]✓ DOCX Export Done: {opath.name}[/]")
+                        log(f"[green]✓ DOCX Export Done: {str(opath)}[/]")
                     else:
                         loop = asyncio.new_event_loop()
                         asyncio.set_event_loop(loop)
                         loop.run_until_complete(generate_pdf_core(ipath, opath, self.settings, log, prog))
-                        log(f"[green]✓ PDF Export Done: {opath.name}[/]")
+                        log(f"[green]✓ PDF Export Done: {str(opath)}[/]")
 
                     self.last_output_path = opath
+                    self.call_from_thread(enable_btn)
             except Exception as e: log(f"[red]Error: {e}[/]")
 
 async def run_gallery_mode(md_path: Path) -> None:
