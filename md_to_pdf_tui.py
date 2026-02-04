@@ -590,9 +590,9 @@ if HAS_TEXTUAL:
                         with Container(classes="section"):
                             yield Static("📁 FILES")
                             with Horizontal(classes="row"):
-                                yield Label("Input:"); yield Input(id="md-input"); yield Button("...", id="browse-btn")
+                                yield Label("Input:"); yield Input(id="md-input", placeholder="Select file or enter path..."); yield Button("Browse", id="browse-btn")
                             with Horizontal(classes="row"):
-                                yield Label("Output Folder:"); yield Input(value=self.settings.get("output_folder", ""), id="out-input"); yield Button("...", id="browse-out-btn")
+                                yield Label("Output Folder:"); yield Input(value=self.settings.get("output_folder", ""), id="out-input", placeholder="Leave empty to save alongside input file"); yield Button("Browse", id="browse-out-btn")
                         with Container(classes="section"):
                             yield Static("🎨 AESTHETICS")
                             with Horizontal(classes="row"):
@@ -650,7 +650,10 @@ if HAS_TEXTUAL:
             def prog(v): self.call_from_thread(lambda: self.query_one("#progress-bar", ProgressBar).update(progress=v))
             try:
                 inp = self.query_one("#md-input", Input).value.strip()
-                if not inp: return
+                if not inp:
+                    log("[yellow]⚠️  Please select a markdown file first![/]")
+                    self.call_from_thread(self.query_one("#md-input", Input).focus)
+                    return
                 ipath = Path(inp).resolve()
                 
                 # Determine output path
