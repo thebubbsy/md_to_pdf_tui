@@ -729,13 +729,13 @@ if HAS_TEXTUAL:
                             with Horizontal(classes="row"):
                                 yield Label("Single Pg:"); yield Switch(value=self.settings.get("unlimited_height", True), id="unlimited-height-switch")
                     with Vertical(id="log-area"):
-                        yield ProgressBar(id="progress-bar", show_eta=False); yield RichLog(id="log")
-                with TabPane("👁️ PREVIEW"):
+                        yield ProgressBar(id="progress-bar", show_eta=False); yield RichLog(id="log", markup=True)
+                with TabPane("Paste & Preview"):
                     with ContentSwitcher(initial="md-preview", id="preview-switcher"):
                         yield Markdown(id="md-preview")
                         yield TextArea(id="paste-area")
             with Horizontal(id="button-bar"): 
-                yield Button("📄 Open PDF", id="open-btn")
+                yield Button("📄 Open File", id="open-btn", disabled=True)
                 yield Button("📝 Export DOCX", id="docx-btn")
                 yield Button("▶ GENERATE PDF", id="convert-btn")
 
@@ -793,6 +793,10 @@ if HAS_TEXTUAL:
                         log("[yellow]⚠️  Paste area is empty![/]")
                         return
 
+                    if text_content.strip().startswith("graph T"):
+                         if not text_content.strip().startswith("```"):
+                             text_content = f"```mermaid\n{text_content}\n```"
+
                     # Determine Output Path
                     out_dir_str = self.query_one("#out-input", Input).value.strip()
                     if out_dir_str:
@@ -820,7 +824,7 @@ if HAS_TEXTUAL:
                             loop = asyncio.new_event_loop()
                             asyncio.set_event_loop(loop)
                             loop.run_until_complete(generate_docx_core(ipath, opath, log, prog, settings=self.settings))
-                            log(f"[green]✓ DOCX Export Done: {opath.name}[/]")
+                            log(f"[green]✓ DOCX Export Done: {str(opath)}[/]")
                         else:
                             loop = asyncio.new_event_loop()
                             asyncio.set_event_loop(loop)
@@ -832,9 +836,10 @@ if HAS_TEXTUAL:
                                 pass
 
                             loop.run_until_complete(generate_pdf_core(ipath, opath, self.settings, log, prog))
-                            log(f"[green]✓ PDF Export Done: {opath.name}[/]")
+                            log(f"[green]✓ PDF Export Done: {str(opath)}[/]")
 
                         self.last_output_path = opath
+                        self.call_from_thread(lambda: self.query_one("#open-btn", Button).update(disabled=False))
 
                 else:
                     inp = self.query_one("#md-input", Input).value.strip()
@@ -858,14 +863,15 @@ if HAS_TEXTUAL:
                         asyncio.set_event_loop(loop)
                         # Pass self.settings to ensure theme is used
                         loop.run_until_complete(generate_docx_core(ipath, opath, log, prog, settings=self.settings))
-                        log(f"[green]✓ DOCX Export Done: {opath.name}[/]")
+                        log(f"[green]✓ DOCX Export Done: {str(opath)}[/]")
                     else:
                         loop = asyncio.new_event_loop()
                         asyncio.set_event_loop(loop)
                         loop.run_until_complete(generate_pdf_core(ipath, opath, self.settings, log, prog))
-                        log(f"[green]✓ PDF Export Done: {opath.name}[/]")
+                        log(f"[green]✓ PDF Export Done: {str(opath)}[/]")
 
                     self.last_output_path = opath
+                    self.call_from_thread(lambda: self.query_one("#open-btn", Button).update(disabled=False))
             except Exception as e: log(f"[red]Error: {e}[/]")
 
 async def run_gallery_mode(md_path: Path) -> None:
