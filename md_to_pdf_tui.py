@@ -372,7 +372,10 @@ async def generate_docx_core(md_path: Path, docx_path: Path, log_fn=print, prog_
     
     # Check for pandoc
     try:
-        subprocess.run(["pandoc", "--version"], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        proc = await asyncio.create_subprocess_exec("pandoc", "--version", stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.DEVNULL)
+        await proc.wait()
+        if proc.returncode != 0:
+            raise subprocess.CalledProcessError(proc.returncode, ["pandoc", "--version"])
     except FileNotFoundError:
         raise RuntimeError("Pandoc not found. Please install pandoc to export to DOCX.")
     
@@ -540,7 +543,8 @@ async def generate_docx_core(md_path: Path, docx_path: Path, log_fn=print, prog_
     cmd = ["pandoc", str(tmp_md), "-o", str(docx_path)]
     
     if log_fn: log_fn(f"Running pandoc...")
-    result = subprocess.run(cmd, capture_output=True, text=True)
+    proc = await asyncio.create_subprocess_exec(*cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
+    stdout, stderr = await proc.communicate()
     
     # Cleanup
     for p in temp_files_to_cleanup:
@@ -548,8 +552,8 @@ async def generate_docx_core(md_path: Path, docx_path: Path, log_fn=print, prog_
             if p.exists(): os.remove(p)
         except: pass
     
-    if result.returncode != 0:
-        raise RuntimeError(f"Pandoc failed: {result.stderr}")
+    if proc.returncode != 0:
+        raise RuntimeError(f"Pandoc failed: {stderr.decode()}")
         
     if prog_fn: prog_fn(100)
     if log_fn: log_fn(f"Created: {docx_path.name}")
