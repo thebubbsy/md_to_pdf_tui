@@ -732,6 +732,19 @@ if HAS_TEXTUAL:
         def __init__(self, cli_file=None, paste_content=None):
             super().__init__(); self.cli_file = cli_file; self.paste_content = paste_content; self.settings = load_settings(); self.recent_files = load_recent_files(); self.last_output_path = None; self.use_paste_source = bool(paste_content)
 
+        def update_file_preview(self, filepath: str) -> None:
+            try:
+                path = Path(filepath).resolve()
+                if path.exists() and path.is_file():
+                    content = path.read_text(encoding="utf-8")
+                    if len(content) > 20000:
+                        content = content[:20000] + "\n\n...(Preview truncated)..."
+                    self.query_one("#md-preview", Markdown).update(content)
+                else:
+                    self.query_one("#md-preview", Markdown).update("")
+            except Exception:
+                self.query_one("#md-preview", Markdown).update("Error loading preview.")
+
         def compose(self) -> ComposeResult:
             yield Static("MDPDFM PRO v3.0 - FORENSIC EDITION", id="app-header")
             with TabbedContent():
@@ -769,7 +782,9 @@ if HAS_TEXTUAL:
                 yield Button("▶ GENERATE PDF", id="convert-btn")
 
         def on_mount(self):
-            if self.cli_file: self.query_one("#md-input", Input).value = str(Path(self.cli_file).resolve())
+            if self.cli_file:
+                self.query_one("#md-input", Input).value = str(Path(self.cli_file).resolve())
+                self.update_file_preview(self.cli_file)
             if self.paste_content:
                 self.query_one("#paste-area", TextArea).text = self.paste_content
                 self.query_one("#source-switch", Switch).value = True
@@ -790,7 +805,13 @@ if HAS_TEXTUAL:
                     self.query_one("#preview-switcher", ContentSwitcher).current = "paste-area"
                 else:
                     self.query_one("#preview-switcher", ContentSwitcher).current = "md-preview"
+                    # Update preview when switching back to file mode
+                    self.update_file_preview(self.query_one("#md-input", Input).value)
             save_settings(self.settings)
+
+        def on_input_submitted(self, event: Input.Submitted):
+            if event.input.id == "md-input":
+                self.update_file_preview(event.value)
 
         def on_input_changed(self, event: Input.Changed):
              if event.input.id == "out-input":
@@ -803,7 +824,9 @@ if HAS_TEXTUAL:
             elif event.button.id == "open-btn": self.action_open_pdf()
             elif event.button.id == "browse-btn":
                 f = open_file_dialog()
-                if f: self.query_one("#md-input", Input).value = f
+                if f:
+                    self.query_one("#md-input", Input).value = f
+                    self.update_file_preview(f)
             elif event.button.id == "browse-out-btn":
                 d = open_folder_dialog()
                 if d: self.query_one("#out-input", Input).value = d
