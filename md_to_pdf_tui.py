@@ -21,6 +21,7 @@ import uuid
 import urllib.request
 import shutil
 import hashlib
+import concurrent.futures
 
 # Textual imports (only if needed)
 try:
@@ -182,30 +183,55 @@ def process_resources(md_text: str, temp_dir: Path) -> str:
     # Regex for HTML images
     html_img_pattern = re.compile(r'<img\s+[^>]*src=["\']([^"\']+)["\'][^>]*>')
 
+    # 1. Collect all URLs to download
+    urls_to_download = set()
+
+    for match in md_img_pattern.finditer(md_text):
+        url = match.group(2)
+        if url.startswith("http://") or url.startswith("https://"):
+            urls_to_download.add(url)
+
+    for match in html_img_pattern.finditer(md_text):
+        url = match.group(1)
+        if url.startswith("http://") or url.startswith("https://"):
+            urls_to_download.add(url)
+
+    # 2. Download in parallel
+    url_to_local = {}
+
+    def download_url(url):
+        try:
+            ext = Path(url).suffix or ".png"
+            if "?" in ext: ext = ext.split("?")[0]
+            local_filename = f"remote_{_hash_url(url)}{ext}"
+            local_path = temp_dir / local_filename
+
+            if not local_path.exists():
+                req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+                with urllib.request.urlopen(req, timeout=15) as response, open(local_path, 'wb') as out_file:
+                    shutil.copyfileobj(response, out_file)
+            return url, local_path.name
+        except Exception as e:
+            # print(f"Failed to download {url}: {e}")
+            return url, None
+
+    if urls_to_download:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
+            future_to_url = {executor.submit(download_url, url): url for url in urls_to_download}
+            for future in concurrent.futures.as_completed(future_to_url):
+                url, local_name = future.result()
+                if local_name:
+                    url_to_local[url] = local_name
+
     def replace_link(match):
         alt = match.group(1)
         url = match.group(2)
 
         # Determine if it's a URL or local path
         if url.startswith("http://") or url.startswith("https://"):
-            try:
-                # Download
-                ext = Path(url).suffix or ".png"
-                if "?" in ext: ext = ext.split("?")[0]
-                local_filename = f"remote_{_hash_url(url)}{ext}"
-                local_path = temp_dir / local_filename
-
-                if not local_path.exists():
-                    req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
-                    with urllib.request.urlopen(req, timeout=15) as response, open(local_path, 'wb') as out_file:
-                        shutil.copyfileobj(response, out_file)
-
-                # Since we are running conversion in the same dir as the md file (temp_dir),
-                # just the filename is enough.
-                return f'![{alt}]({local_path.name})'
-            except Exception as e:
-                # print(f"Failed to download {url}: {e}")
-                return match.group(0) # Keep original if failed
+            if url in url_to_local:
+                 return f'![{alt}]({url_to_local[url]})'
+            return match.group(0) # Keep original if failed
         else:
             # Local file
             try:
@@ -225,20 +251,9 @@ def process_resources(md_text: str, temp_dir: Path) -> str:
         full_tag = match.group(0)
 
         if url.startswith("http://") or url.startswith("https://"):
-            try:
-                ext = Path(url).suffix or ".png"
-                if "?" in ext: ext = ext.split("?")[0]
-                local_filename = f"remote_{_hash_url(url)}{ext}"
-                local_path = temp_dir / local_filename
-
-                if not local_path.exists():
-                    req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
-                    with urllib.request.urlopen(req, timeout=15) as response, open(local_path, 'wb') as out_file:
-                        shutil.copyfileobj(response, out_file)
-
-                return full_tag.replace(url, local_path.name)
-            except:
-                return full_tag
+            if url in url_to_local:
+                return full_tag.replace(url, url_to_local[url])
+            return full_tag
         else:
             try:
                 src_path = Path(url).resolve()
