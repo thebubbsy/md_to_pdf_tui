@@ -14,6 +14,8 @@
 -   **Headless Mode**: Run from scripts or CLI for automated pipelines.
 -   **Gallery Mode**: Automatically generate PNG previews of a document in all available themes.
 
+<img width="1919" height="1028" alt="image" src="https://github.com/user-attachments/assets/2e5f064a-6a48-4e10-891b-7f42376fad0b" />
+
 ## Installation
 
 1.  Clone the repository:
