@@ -1,5 +1,5 @@
 """
-Markdown to PDF Converter TUI v2.8.2 Pro - Forensic Suite
+Markdown to PDF Converter TUI v2.8.2 Pro - Suite
 The most feature-rich version ever. Zero-bullshit logic.
 Now with background CLI mode for automated exports and high-contrast light-mode.
 Added themes and png output to docx
@@ -21,12 +21,19 @@ import uuid
 import urllib.request
 import shutil
 import hashlib
-from functools import partial
+import webbrowser
+
+try:
+    from rich_pixels import Pixels
+    from PIL import Image
+    HAS_PIXELS = True
+except ImportError:
+    HAS_PIXELS = False
 
 # Textual imports (only if needed)
 try:
     from textual.app import App, ComposeResult, events
-    from textual.containers import Container, Horizontal, Vertical, ScrollableContainer, VerticalScroll
+    from textual.containers import Container, Horizontal, Vertical, ScrollableContainer, VerticalScroll, Center
     from textual.widgets import (
         Button, Footer, Header, Input, Label, RichLog, Static, 
         Select, Switch, ProgressBar, Rule, TabbedContent, TabPane, Markdown, TextArea, ContentSwitcher
@@ -50,12 +57,6 @@ SETTINGS_PATH = CONFIG_DIR / "settings.json"
 MAX_RECENT_FILES = 10
 MAX_RECENT_FILES = 10
 A4_WIDTH_PX = 800
-
-# --- Regex Patterns ---
-ALERT_PATTERN = re.compile(r"^\s*>\s*\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\]", re.IGNORECASE)
-MD_IMG_PATTERN = re.compile(r'!\[([^\]]*)\]\s*\(\s*([^\s)]+)(?:\s+["\'].*?["\'])?\s*\)')
-HTML_IMG_PATTERN = re.compile(r'<img\s+[^>]*src=["\']([^"\']+)["\'][^>]*>')
-MERMAID_PATTERN = re.compile(r"^(?:`{3,}|~{3,})mermaid\s*\n(.*?)\n(?:`{3,}|~{3,})", re.DOTALL | re.MULTILINE)
 
 # --- Theme Definitions ---
 THEMES = {
@@ -187,6 +188,14 @@ def process_resources(md_text: str, temp_dir: Path) -> str:
     def _hash_url(url: str) -> str:
         return hashlib.md5(url.encode()).hexdigest()
 
+    # Find ![alt](url)
+    # Regex for standard markdown images. Handles optional title: ![alt](url "title")
+    md_img_pattern = re.compile(r'!\[([^\]]*)\]\s*\(\s*([^\s)]+)(?:\s+["\'].*?["\'])?\s*\)')
+
+    # Find <img src="...">
+    # Regex for HTML images
+    html_img_pattern = re.compile(r'<img\s+[^>]*src=["\']([^"\']+)["\'][^>]*>')
+
     def replace_link(match):
         alt = match.group(1)
         url = match.group(2)
@@ -256,8 +265,8 @@ def process_resources(md_text: str, temp_dir: Path) -> str:
             except:
                 return full_tag
 
-    new_text = MD_IMG_PATTERN.sub(replace_link, md_text)
-    new_text = HTML_IMG_PATTERN.sub(replace_html_src, new_text)
+    new_text = md_img_pattern.sub(replace_link, md_text)
+    new_text = html_img_pattern.sub(replace_html_src, new_text)
 
     return new_text
 
@@ -422,7 +431,7 @@ async def render_png_page(browser, md_path: Path, png_path: Path, settings: dict
     md_text = await asyncio.get_running_loop().run_in_executor(None, md_path.read_text, "utf-8")
     html_content = create_html_content(md_text, settings)
     
-    tmp_h = md_path.with_suffix(f".{uuid.uuid4()}.tmp.html")
+    tmp_h = md_path.with_suffix(".tmp.html")
     with open(tmp_h, "w", encoding="utf-8") as f:
         f.write(html_content)
         
@@ -572,12 +581,13 @@ async def generate_docx_core(md_path: Path, docx_path: Path, log_fn=print, prog_
     alert_type = None
     alert_content = []
     
-    # Using module-level compiled pattern ALERT_PATTERN
+    # Pre-compile the regex
+    alert_pattern = re.compile(r"^\s*>\s*\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\]", re.IGNORECASE)
 
     for line in lines:
         # Check for alert header with flexible whitespace
         # matches: > [!NOTE],   > [!NOTE], >[!NOTE]
-        match = ALERT_PATTERN.match(line)
+        match = alert_pattern.match(line)
         if match:
             # If we were already in an alert, close it first
             if in_alert:
@@ -624,8 +634,8 @@ async def generate_docx_core(md_path: Path, docx_path: Path, log_fn=print, prog_
     md_text = "\n".join(processed_lines)
     
     # Update regex since we modified md_text
-    # Using module-level compiled pattern MERMAID_PATTERN
-    mermaid_blocks = list(MERMAID_PATTERN.finditer(md_text))
+    mermaid_pattern = re.compile(r"^(?:`{3,}|~{3,})mermaid\s*\n(.*?)\n(?:`{3,}|~{3,})", re.DOTALL | re.MULTILINE)
+    mermaid_blocks = list(mermaid_pattern.finditer(md_text))
     
     temp_images = []
     temp_files_to_cleanup = []
@@ -704,7 +714,7 @@ async def generate_docx_core(md_path: Path, docx_path: Path, log_fn=print, prog_
     # Save modified markdown
     tmp_md = md_path.with_suffix(f".{uuid.uuid4()}.tmp.md")
     temp_files_to_cleanup.append(tmp_md)
-    await asyncio.get_running_loop().run_in_executor(None, partial(tmp_md.write_text, modified_md, encoding="utf-8"))
+    tmp_md.write_text(modified_md, encoding="utf-8")
     
     cmd = ["pandoc", str(tmp_md), "-o", str(docx_path)]
     
@@ -747,6 +757,9 @@ if HAS_TEXTUAL:
         #convert-btn { background: #238636; color: white; width: 22; margin-left: 1; }
         #docx-btn { background: #1f6feb; color: white; width: 22; margin-left: 1; }
         #preview-controls { height: 3; align: right middle; padding-right: 1; }
+        #editor-toolbar { height: 3; margin-bottom: 1; align: left middle; background: #21262d; padding-left: 1; }
+        .tool-btn { min-width: 5; margin-right: 1; height: 1; background: #30363d; border: none; }
+        .tool-btn:hover { background: #58a6ff; color: #161b22; }
         """
         BINDINGS = [Binding("ctrl+o", "browse_file"), Binding("ctrl+r", "convert"), Binding("ctrl+d", "convert_docx"), Binding("ctrl+p", "open_pdf"), Binding("f1", "show_help")]
 
@@ -755,6 +768,20 @@ if HAS_TEXTUAL:
 
         def update_file_preview(self, filepath: str) -> None:
             try:
+                # Reset container to just text if needed
+                container = self.query_one("#md-view", VerticalScroll)
+
+                # Check if we need to reset the view (if it's not just the standard markdown widget)
+                should_reset = True
+                if len(container.children) == 1:
+                    child = container.children[0]
+                    if isinstance(child, Markdown) and child.id == "md-preview":
+                        should_reset = False
+
+                if should_reset:
+                    container.remove_children()
+                    container.mount(Markdown(id="md-preview"))
+
                 path = Path(filepath).resolve()
                 if path.exists() and path.is_file():
                     content = path.read_text(encoding="utf-8")
@@ -764,10 +791,10 @@ if HAS_TEXTUAL:
                 else:
                     self.query_one("#md-preview", Markdown).update("")
             except Exception:
-                self.query_one("#md-preview", Markdown).update("Error loading preview.")
+                pass # Fail silently or log
 
         def compose(self) -> ComposeResult:
-            yield Static("MDPDFM PRO v3.0 - FORENSIC EDITION", id="app-header")
+            yield Static("MDPDFM PRO v3.0", id="app-header")
             with TabbedContent():
                 with TabPane("🛠️ SETTINGS"):
                     with VerticalScroll():
@@ -794,10 +821,24 @@ if HAS_TEXTUAL:
                     with Vertical(id="log-area"):
                         yield ProgressBar(id="progress-bar", show_eta=False); yield RichLog(id="log", markup=True)
                 with TabPane("Paste & Preview"):
+                    with Horizontal(id="editor-toolbar", classes="toolbar"):
+                        yield Button("B", id="btn-bold", classes="tool-btn")
+                        yield Button("I", id="btn-italic", classes="tool-btn")
+                        yield Button("Code", id="btn-code", classes="tool-btn")
+                        yield Button("List", id="btn-list", classes="tool-btn")
+                        yield Button("Link", id="btn-link", classes="tool-btn")
+                        yield Button("H1", id="btn-h1", classes="tool-btn")
+                        yield Button("H2", id="btn-h2", classes="tool-btn")
+                        yield Button("H3", id="btn-h3", classes="tool-btn")
+
                     with Horizontal(id="preview-controls"):
-                         yield Button("👁️ Preview Rendered", id="toggle-view-btn", disabled=True, variant="primary")
-                    with ContentSwitcher(initial="md-preview", id="preview-switcher"):
-                        yield Markdown(id="md-preview")
+                         yield Button("👁️ TUI Preview", id="toggle-view-btn", disabled=True, variant="primary")
+                         yield Button("🌐 Browser Preview", id="browser-preview-btn", variant="default")
+                         if HAS_PIXELS:
+                             yield Button("🖼️ Render Graphs", id="tui-render-btn", variant="default")
+                    with ContentSwitcher(initial="md-view", id="preview-switcher"):
+                        with VerticalScroll(id="md-view"):
+                            yield Markdown(id="md-preview")
                         yield TextArea(id="paste-area")
             with Horizontal(id="button-bar"): 
                 yield Button("📄 Open File", id="open-btn", disabled=True)
@@ -830,11 +871,11 @@ if HAS_TEXTUAL:
                     # Paste Mode
                     switcher.current = "paste-area"
                     toggle_btn.disabled = False
-                    toggle_btn.label = "👁️ Preview Rendered"
+                    toggle_btn.label = "👁️ TUI Preview"
                     toggle_btn.variant = "primary"
                 else:
                     # File Mode
-                    switcher.current = "md-preview"
+                    switcher.current = "md-view"
                     toggle_btn.disabled = True
                     # Update preview when switching back to file mode
                     self.update_file_preview(self.query_one("#md-input", Input).value)
@@ -849,7 +890,40 @@ if HAS_TEXTUAL:
                  self.settings["output_folder"] = event.value
                  save_settings(self.settings)
 
+        def handle_editor_button(self, btn_id: str) -> None:
+            ta = self.query_one("#paste-area", TextArea)
+            sel = ta.selection
+            text = ta.selected_text
+
+            if btn_id == "btn-bold":
+                ta.replace(f"**{text}**", sel.start, sel.end)
+            elif btn_id == "btn-italic":
+                ta.replace(f"*{text}*", sel.start, sel.end)
+            elif btn_id == "btn-code":
+                if "\n" in text:
+                    ta.replace(f"```\n{text}\n```", sel.start, sel.end)
+                else:
+                    ta.replace(f"`{text}`", sel.start, sel.end)
+            elif btn_id == "btn-link":
+                ta.replace(f"[{text}](url)", sel.start, sel.end)
+            elif btn_id == "btn-list":
+                lines = text.split('\n')
+                new_lines = [f"- {line}" for line in lines]
+                ta.replace("\n".join(new_lines), sel.start, sel.end)
+            elif btn_id == "btn-h1":
+                ta.replace(f"# {text}", sel.start, sel.end)
+            elif btn_id == "btn-h2":
+                ta.replace(f"## {text}", sel.start, sel.end)
+            elif btn_id == "btn-h3":
+                ta.replace(f"### {text}", sel.start, sel.end)
+
+            ta.focus()
+
         async def on_button_pressed(self, event: Button.Pressed):
+            if event.button.id and event.button.id.startswith("btn-"):
+                self.handle_editor_button(event.button.id)
+                return
+
             if event.button.id == "convert-btn": self.run_conversion(fmt="pdf")
             elif event.button.id == "docx-btn": self.run_conversion(fmt="docx")
             elif event.button.id == "open-btn": self.action_open_pdf()
@@ -861,24 +935,192 @@ if HAS_TEXTUAL:
             elif event.button.id == "browse-out-btn":
                 d = open_folder_dialog()
                 if d: self.query_one("#out-input", Input).value = d
+            elif event.button.id == "browser-preview-btn":
+                self.action_browser_preview()
+            elif event.button.id == "tui-render-btn":
+                self.action_render_tui()
             elif event.button.id == "toggle-view-btn":
                 switcher = self.query_one("#preview-switcher", ContentSwitcher)
                 btn = event.button
                 if switcher.current == "paste-area":
                     # Switch to Preview
                     content = self.query_one("#paste-area", TextArea).text
+
+                    # Reset view to text only first
+                    container = self.query_one("#md-view", VerticalScroll)
+
+                    should_reset = True
+                    if len(container.children) == 1:
+                        child = container.children[0]
+                        if isinstance(child, Markdown) and child.id == "md-preview":
+                            should_reset = False
+
+                    if should_reset:
+                        container.remove_children()
+                        container.mount(Markdown(id="md-preview"))
+
                     self.query_one("#md-preview", Markdown).update(content)
-                    switcher.current = "md-preview"
+                    switcher.current = "md-view"
                     btn.label = "✏️ Back to Edit"
                     btn.variant = "default"
                 else:
                     # Switch back to Edit
                     switcher.current = "paste-area"
-                    btn.label = "👁️ Preview Rendered"
+                    btn.label = "👁️ TUI Preview"
                     btn.variant = "primary"
 
         def action_open_pdf(self):
             if self.last_output_path and self.last_output_path.exists(): os.startfile(str(self.last_output_path))
+
+        def action_browser_preview(self):
+            content = ""
+            if self.use_paste_source:
+                content = self.query_one("#paste-area", TextArea).text
+            else:
+                path_str = self.query_one("#md-input", Input).value
+                if path_str:
+                    path = Path(path_str).resolve()
+                    if path.exists():
+                        content = path.read_text(encoding="utf-8")
+
+            if not content:
+                self.query_one("#log", RichLog).write("[yellow]Nothing to preview.[/]")
+                return
+
+            self.worker_browser_preview(content)
+
+        @work(thread=True)
+        def worker_browser_preview(self, content: str):
+             try:
+                temp_dir = Path(tempfile.mkdtemp())
+                processed_content = process_resources(content, temp_dir)
+                html = create_html_content(processed_content, self.settings)
+                preview_path = temp_dir / "preview.html"
+                preview_path.write_text(html, encoding="utf-8")
+                webbrowser.open(f"file://{preview_path.resolve()}")
+                self.call_from_thread(lambda: self.query_one("#log", RichLog).write("[green]Browser preview opened.[/]"))
+             except Exception as e:
+                self.call_from_thread(lambda: self.query_one("#log", RichLog).write(f"[red]Preview Error: {e}[/]"))
+
+        def action_render_tui(self):
+            content = ""
+            if self.use_paste_source:
+                content = self.query_one("#paste-area", TextArea).text
+            else:
+                path_str = self.query_one("#md-input", Input).value
+                if path_str:
+                    path = Path(path_str).resolve()
+                    if path.exists():
+                        content = path.read_text(encoding="utf-8")
+
+            if not content:
+                 self.query_one("#log", RichLog).write("[yellow]Nothing to render.[/]")
+                 return
+
+            # Check if there are mermaid blocks
+            if "mermaid" not in content and "```" not in content:
+                 self.query_one("#log", RichLog).write("[yellow]No code blocks found to render.[/]")
+                 return
+
+            self.query_one("#log", RichLog).write("[cyan]Rendering diagrams for TUI... please wait.[/]")
+
+            # Switch to preview view if not already
+            if self.use_paste_source:
+                switcher = self.query_one("#preview-switcher", ContentSwitcher)
+                switcher.current = "md-view"
+                self.query_one("#toggle-view-btn", Button).label = "✏️ Back to Edit"
+                self.query_one("#toggle-view-btn", Button).variant = "default"
+
+            self.worker_render_tui(content)
+
+        @work(thread=True)
+        def worker_render_tui(self, content: str):
+             try:
+                temp_dir = Path(tempfile.mkdtemp())
+                processed_content = process_resources(content, temp_dir)
+
+                # Identify mermaid blocks
+                mermaid_pattern = re.compile(r"^(?:`{3,}|~{3,})mermaid\s*\n(.*?)\n(?:`{3,}|~{3,})", re.DOTALL | re.MULTILINE)
+                parts = mermaid_pattern.split(processed_content)
+
+                # If only 1 part, no mermaid
+                if len(parts) < 2:
+                    self.call_from_thread(lambda: self.query_one("#log", RichLog).write("[yellow]No mermaid blocks found to render.[/]"))
+                    return
+
+                # Render ALL to get images
+                html = create_html_content(processed_content, self.settings)
+                tmp_h = temp_dir / "render.html"
+                tmp_h.write_text(html, encoding="utf-8")
+
+                images = []
+
+                async def capture():
+                     async with async_playwright() as p:
+                        browser = await p.chromium.launch()
+                        page = await browser.new_page(device_scale_factor=2)
+                        await page.goto(f"file://{tmp_h.resolve()}", wait_until="networkidle")
+
+                        try:
+                            await page.wait_for_selector(".mermaid svg", timeout=5000)
+                            await page.wait_for_timeout(500)
+                        except: pass
+
+                        elements = await page.locator(".mermaid").all()
+                        for i, el in enumerate(elements):
+                            p = temp_dir / f"diag_{i}.png"
+                            await el.screenshot(path=str(p))
+                            images.append(p)
+                        await browser.close()
+
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                loop.run_until_complete(capture())
+
+                def update_ui():
+                    container = self.query_one("#md-view", VerticalScroll)
+                    container.remove_children()
+
+                    img_idx = 0
+                    for i, part in enumerate(parts):
+                        if i % 2 == 0:
+                            # Text
+                            if part.strip():
+                                container.mount(Markdown(part))
+                        else:
+                            # Mermaid Code - replace with image if available
+                            if img_idx < len(images):
+                                img_path = images[img_idx]
+                                try:
+                                    img = Image.open(img_path)
+
+                                    # Calculate resize dimensions to fit in terminal
+                                    # Get available width (console width - padding)
+                                    console_width = self.app.console.size.width
+                                    max_width = max(40, console_width - 10) # 10 chars padding
+
+                                    w, h = img.size
+                                    aspect = h / w
+
+                                    target_w = max_width
+                                    target_h = int(target_w * aspect)
+
+                                    img.thumbnail((target_w, target_h * 2), Image.Resampling.LANCZOS)
+                                    pix = Pixels.from_image(img)
+
+                                    container.mount(Center(Static(pix)))
+                                    img_idx += 1
+                                except Exception as e:
+                                    container.mount(Static(f"[red]Error loading image: {e}[/]"))
+                            else:
+                                container.mount(Static("[red]Image missing[/]"))
+
+                    self.query_one("#log", RichLog).write("[green]TUI Render Complete![/]")
+
+                self.call_from_thread(update_ui)
+
+             except Exception as e:
+                self.call_from_thread(lambda: self.query_one("#log", RichLog).write(f"[red]TUI Render Error: {e}[/]"))
 
         @work(exclusive=True, thread=True)
         def run_conversion(self, fmt="pdf") -> None:
@@ -981,16 +1223,11 @@ async def run_gallery_mode(md_path: Path) -> None:
 
     async with async_playwright() as p:
         browser = await p.chromium.launch()
-        tasks = []
         for theme in THEMES.keys():
-            # Create a copy of settings for this specific task
-            task_settings = settings.copy()
-            task_settings["theme"] = theme
+            settings["theme"] = theme
             gallery_path = md_path.parent / f"{md_path.stem}_{theme.lower().replace(' ', '_')}.png"
             # Pass the shared browser instance
-            tasks.append(generate_png_core(md_path, gallery_path, task_settings, browser=browser))
-
-        await asyncio.gather(*tasks)
+            await generate_png_core(md_path, gallery_path, settings, browser=browser)
         await browser.close()
     print("Gallery generation complete.")
 

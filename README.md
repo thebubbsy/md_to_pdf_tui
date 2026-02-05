@@ -1,6 +1,6 @@
-# Markdown to PDF Converter TUI (Pro - Forensic Suite)
+# Markdown to PDF Converter TUI (Pro Suite)
 
-**MDPDFM PRO v3.0** is a feature-rich, "zero-bullshit" Markdown to PDF/DOCX/PNG converter. It features a modern Terminal User Interface (TUI) powered by Textual, high-quality rendering via Playwright, and specialized support for forensic documentation styles (alerts, themes).
+**MDPDFM PRO v3.0** is a feature-rich, "zero-bullshit" Markdown to PDF/DOCX/PNG converter. It features a modern Terminal User Interface (TUI) powered by Textual, high-quality rendering via Playwright, and specialized support for advanced documentation styles (alerts, themes).
 
 ## Features
 
@@ -9,7 +9,7 @@
 -   **DOCX Export**: Convert Markdown to Word documents with styled alerts (requires `pandoc`).
 -   **PNG Export**: Generate high-resolution screenshots of your documents (up to 24K resolution supported).
 -   **Mermaid Diagrams**: Native support for rendering Mermaid.js diagrams.
--   **Forensic Alerts**: GitHub-flavored alert blocks (Note, Tip, Important, Warning, Caution) are fully styled.
+-   **Alert Blocks**: GitHub-flavored alert blocks (Note, Tip, Important, Warning, Caution) are fully styled.
 -   **Theming**: Includes 10+ themes (GitHub Light/Dark, Solarized, Dracula, Cyberpunk, etc.).
 -   **Headless Mode**: Run from scripts or CLI for automated pipelines.
 -   **Gallery Mode**: Automatically generate PNG previews of a document in all available themes.
