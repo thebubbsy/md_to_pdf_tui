@@ -172,6 +172,12 @@ def open_folder_dialog() -> Optional[str]:
     except Exception:
         return None
 
+# --- Regex Patterns ---
+# Regex for standard markdown images. Handles optional title: ![alt](url "title")
+MD_IMG_PATTERN = re.compile(r'!\[([^\]]*)\]\s*\(\s*([^\s)]+)(?:\s+["\'].*?["\'])?\s*\)')
+# Regex for HTML images
+HTML_IMG_PATTERN = re.compile(r'<img\s+[^>]*src=["\']([^"\']+)["\'][^>]*>')
+
 def process_resources(md_text: str, temp_dir: Path) -> str:
     """
     Scans markdown text for images and resources.
