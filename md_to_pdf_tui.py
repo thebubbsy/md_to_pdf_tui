@@ -21,7 +21,14 @@ import uuid
 import urllib.request
 import shutil
 import hashlib
-from functools import partial
+import webbrowser
+
+try:
+    from rich_pixels import Pixels
+    from PIL import Image
+    HAS_PIXELS = True
+except ImportError:
+    HAS_PIXELS = False
 
 # Textual imports (only if needed)
 try:
@@ -50,12 +57,6 @@ SETTINGS_PATH = CONFIG_DIR / "settings.json"
 MAX_RECENT_FILES = 10
 MAX_RECENT_FILES = 10
 A4_WIDTH_PX = 800
-
-# --- Regex Patterns ---
-ALERT_PATTERN = re.compile(r"^\s*>\s*\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\]", re.IGNORECASE)
-MD_IMG_PATTERN = re.compile(r'!\[([^\]]*)\]\s*\(\s*([^\s)]+)(?:\s+["\'].*?["\'])?\s*\)')
-HTML_IMG_PATTERN = re.compile(r'<img\s+[^>]*src=["\']([^"\']+)["\'][^>]*>')
-MERMAID_PATTERN = re.compile(r"^(?:`{3,}|~{3,})mermaid\s*\n(.*?)\n(?:`{3,}|~{3,})", re.DOTALL | re.MULTILINE)
 
 # --- Theme Definitions ---
 THEMES = {
@@ -183,11 +184,11 @@ def process_resources(md_text: str, temp_dir: Path) -> str:
 
     # Find ![alt](url)
     # Regex for standard markdown images. Handles optional title: ![alt](url "title")
-    # Using module-level compiled pattern MD_IMG_PATTERN
+    md_img_pattern = re.compile(r'!\[([^\]]*)\]\s*\(\s*([^\s)]+)(?:\s+["\'].*?["\'])?\s*\)')
 
     # Find <img src="...">
     # Regex for HTML images
-    # Using module-level compiled pattern HTML_IMG_PATTERN
+    html_img_pattern = re.compile(r'<img\s+[^>]*src=["\']([^"\']+)["\'][^>]*>')
 
     def replace_link(match):
         alt = match.group(1)
@@ -258,8 +259,8 @@ def process_resources(md_text: str, temp_dir: Path) -> str:
             except:
                 return full_tag
 
-    new_text = MD_IMG_PATTERN.sub(replace_link, md_text)
-    new_text = HTML_IMG_PATTERN.sub(replace_html_src, new_text)
+    new_text = md_img_pattern.sub(replace_link, md_text)
+    new_text = html_img_pattern.sub(replace_html_src, new_text)
 
     return new_text
 
@@ -424,7 +425,7 @@ async def render_png_page(browser, md_path: Path, png_path: Path, settings: dict
     md_text = await asyncio.get_running_loop().run_in_executor(None, md_path.read_text, "utf-8")
     html_content = create_html_content(md_text, settings)
     
-    tmp_h = md_path.with_suffix(f".{uuid.uuid4()}.tmp.html")
+    tmp_h = md_path.with_suffix(".tmp.html")
     with open(tmp_h, "w", encoding="utf-8") as f:
         f.write(html_content)
         
@@ -574,12 +575,13 @@ async def generate_docx_core(md_path: Path, docx_path: Path, log_fn=print, prog_
     alert_type = None
     alert_content = []
     
-    # Using module-level compiled pattern ALERT_PATTERN
+    # Pre-compile the regex
+    alert_pattern = re.compile(r"^\s*>\s*\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\]", re.IGNORECASE)
 
     for line in lines:
         # Check for alert header with flexible whitespace
         # matches: > [!NOTE],   > [!NOTE], >[!NOTE]
-        match = ALERT_PATTERN.match(line)
+        match = alert_pattern.match(line)
         if match:
             # If we were already in an alert, close it first
             if in_alert:
@@ -626,8 +628,8 @@ async def generate_docx_core(md_path: Path, docx_path: Path, log_fn=print, prog_
     md_text = "\n".join(processed_lines)
     
     # Update regex since we modified md_text
-    # Using module-level compiled pattern MERMAID_PATTERN
-    mermaid_blocks = list(MERMAID_PATTERN.finditer(md_text))
+    mermaid_pattern = re.compile(r"^(?:`{3,}|~{3,})mermaid\s*\n(.*?)\n(?:`{3,}|~{3,})", re.DOTALL | re.MULTILINE)
+    mermaid_blocks = list(mermaid_pattern.finditer(md_text))
     
     temp_images = []
     temp_files_to_cleanup = []
@@ -706,7 +708,7 @@ async def generate_docx_core(md_path: Path, docx_path: Path, log_fn=print, prog_
     # Save modified markdown
     tmp_md = md_path.with_suffix(f".{uuid.uuid4()}.tmp.md")
     temp_files_to_cleanup.append(tmp_md)
-    await asyncio.get_running_loop().run_in_executor(None, partial(tmp_md.write_text, modified_md, encoding="utf-8"))
+    tmp_md.write_text(modified_md, encoding="utf-8")
     
     cmd = ["pandoc", str(tmp_md), "-o", str(docx_path)]
     
@@ -1085,7 +1087,21 @@ if HAS_TEXTUAL:
                                 img_path = images[img_idx]
                                 try:
                                     img = Image.open(img_path)
+
+                                    # Calculate resize dimensions to fit in terminal
+                                    # Get available width (console width - padding)
+                                    console_width = self.app.console.size.width
+                                    max_width = max(40, console_width - 10) # 10 chars padding
+
+                                    w, h = img.size
+                                    aspect = h / w
+
+                                    target_w = max_width
+                                    target_h = int(target_w * aspect)
+
+                                    img.thumbnail((target_w, target_h * 2), Image.Resampling.LANCZOS)
                                     pix = Pixels.from_image(img)
+
                                     container.mount(Center(Static(pix)))
                                     img_idx += 1
                                 except Exception as e:
@@ -1201,16 +1217,11 @@ async def run_gallery_mode(md_path: Path) -> None:
 
     async with async_playwright() as p:
         browser = await p.chromium.launch()
-        tasks = []
         for theme in THEMES.keys():
-            # Create a copy of settings for this specific task
-            task_settings = settings.copy()
-            task_settings["theme"] = theme
+            settings["theme"] = theme
             gallery_path = md_path.parent / f"{md_path.stem}_{theme.lower().replace(' ', '_')}.png"
             # Pass the shared browser instance
-            tasks.append(generate_png_core(md_path, gallery_path, task_settings, browser=browser))
-
-        await asyncio.gather(*tasks)
+            await generate_png_core(md_path, gallery_path, settings, browser=browser)
         await browser.close()
     print("Gallery generation complete.")
 
