@@ -417,7 +417,7 @@ async def render_png_page(browser, md_path: Path, png_path: Path, settings: dict
     md_text = await asyncio.get_running_loop().run_in_executor(None, md_path.read_text, "utf-8")
     html_content = create_html_content(md_text, settings)
     
-    tmp_h = md_path.with_suffix(".tmp.html")
+    tmp_h = md_path.with_suffix(f".{uuid.uuid4()}.tmp.html")
     with open(tmp_h, "w", encoding="utf-8") as f:
         f.write(html_content)
         
@@ -977,11 +977,16 @@ async def run_gallery_mode(md_path: Path) -> None:
 
     async with async_playwright() as p:
         browser = await p.chromium.launch()
+        tasks = []
         for theme in THEMES.keys():
-            settings["theme"] = theme
+            # Create a copy of settings for this specific task
+            task_settings = settings.copy()
+            task_settings["theme"] = theme
             gallery_path = md_path.parent / f"{md_path.stem}_{theme.lower().replace(' ', '_')}.png"
             # Pass the shared browser instance
-            await generate_png_core(md_path, gallery_path, settings, browser=browser)
+            tasks.append(generate_png_core(md_path, gallery_path, task_settings, browser=browser))
+
+        await asyncio.gather(*tasks)
         await browser.close()
     print("Gallery generation complete.")
 
