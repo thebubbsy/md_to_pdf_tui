@@ -363,8 +363,24 @@ async def generate_pdf_core(md_path: Path, pdf_path: Path, settings: dict, log_f
         abs_url = f"file:///{str(tmp_h.resolve()).replace(os.sep, '/')}"
         await page.goto(abs_url, wait_until="networkidle")
         
-        if log_fn: log_fn("Waiting for diagrams to render...")
-        await page.wait_for_timeout(6000)
+        # Smart wait for diagrams
+        mermaid_count = await page.locator(".mermaid").count()
+        if mermaid_count > 0:
+            if log_fn: log_fn(f"Waiting for {mermaid_count} diagrams to render...")
+            try:
+                await page.wait_for_function("""
+                    () => {
+                        const all = document.querySelectorAll('.mermaid');
+                        const processed = document.querySelectorAll('.mermaid[data-processed="true"]');
+                        const error = document.querySelectorAll('.mermaid-error');
+                        return (processed.length + error.length) === all.length;
+                    }
+                """, timeout=10000)
+                await page.wait_for_timeout(500) # Buffer for layout
+            except Exception as e:
+                if log_fn: log_fn(f"Warning: Timeout waiting for diagrams: {e}")
+        else:
+            if log_fn: log_fn("No diagrams detected, skipping wait.")
         if prog_fn: prog_fn(70)
         
         # Save Diagrams if enabled
