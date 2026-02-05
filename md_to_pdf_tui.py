@@ -50,6 +50,12 @@ MAX_RECENT_FILES = 10
 MAX_RECENT_FILES = 10
 A4_WIDTH_PX = 800
 
+# --- Regex Patterns ---
+ALERT_PATTERN = re.compile(r"^\s*>\s*\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\]", re.IGNORECASE)
+MD_IMG_PATTERN = re.compile(r'!\[([^\]]*)\]\s*\(\s*([^\s)]+)(?:\s+["\'].*?["\'])?\s*\)')
+HTML_IMG_PATTERN = re.compile(r'<img\s+[^>]*src=["\']([^"\']+)["\'][^>]*>')
+MERMAID_PATTERN = re.compile(r"^(?:`{3,}|~{3,})mermaid\s*\n(.*?)\n(?:`{3,}|~{3,})", re.DOTALL | re.MULTILINE)
+
 # --- Theme Definitions ---
 THEMES = {
     "GitHub Light": {
@@ -176,11 +182,11 @@ def process_resources(md_text: str, temp_dir: Path) -> str:
 
     # Find ![alt](url)
     # Regex for standard markdown images. Handles optional title: ![alt](url "title")
-    md_img_pattern = re.compile(r'!\[([^\]]*)\]\s*\(\s*([^\s)]+)(?:\s+["\'].*?["\'])?\s*\)')
+    # Using module-level compiled pattern MD_IMG_PATTERN
 
     # Find <img src="...">
     # Regex for HTML images
-    html_img_pattern = re.compile(r'<img\s+[^>]*src=["\']([^"\']+)["\'][^>]*>')
+    # Using module-level compiled pattern HTML_IMG_PATTERN
 
     def replace_link(match):
         alt = match.group(1)
@@ -251,8 +257,8 @@ def process_resources(md_text: str, temp_dir: Path) -> str:
             except:
                 return full_tag
 
-    new_text = md_img_pattern.sub(replace_link, md_text)
-    new_text = html_img_pattern.sub(replace_html_src, new_text)
+    new_text = MD_IMG_PATTERN.sub(replace_link, md_text)
+    new_text = HTML_IMG_PATTERN.sub(replace_html_src, new_text)
 
     return new_text
 
@@ -567,13 +573,12 @@ async def generate_docx_core(md_path: Path, docx_path: Path, log_fn=print, prog_
     alert_type = None
     alert_content = []
     
-    # Pre-compile the regex
-    alert_pattern = re.compile(r"^\s*>\s*\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\]", re.IGNORECASE)
+    # Using module-level compiled pattern ALERT_PATTERN
 
     for line in lines:
         # Check for alert header with flexible whitespace
         # matches: > [!NOTE],   > [!NOTE], >[!NOTE]
-        match = alert_pattern.match(line)
+        match = ALERT_PATTERN.match(line)
         if match:
             # If we were already in an alert, close it first
             if in_alert:
@@ -620,8 +625,8 @@ async def generate_docx_core(md_path: Path, docx_path: Path, log_fn=print, prog_
     md_text = "\n".join(processed_lines)
     
     # Update regex since we modified md_text
-    mermaid_pattern = re.compile(r"^(?:`{3,}|~{3,})mermaid\s*\n(.*?)\n(?:`{3,}|~{3,})", re.DOTALL | re.MULTILINE)
-    mermaid_blocks = list(mermaid_pattern.finditer(md_text))
+    # Using module-level compiled pattern MERMAID_PATTERN
+    mermaid_blocks = list(MERMAID_PATTERN.finditer(md_text))
     
     temp_images = []
     temp_files_to_cleanup = []
