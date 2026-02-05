@@ -718,11 +718,11 @@ if HAS_TEXTUAL:
         CSS = """
         Screen { background: #0d1117; }
         #app-header { dock: top; height: 1; background: #161b22; color: #58a6ff; text-align: center; }
-        .section { background: #161b22; border: solid #30363d; padding: 1 2; margin-bottom: 1; }
+        .section { background: #161b22; border: solid #30363d; padding: 0 1; margin-bottom: 1; }
         .row { height: 3; align: left middle; }
         .row Label { width: 18; }
         .row Input { width: 1fr; border: solid #30363d; }
-        #log-area { height: 10; background: #010409; border-top: solid #30363d; }
+        #log-area { height: 20%; min-height: 3; max-height: 10; background: #010409; border-top: solid #30363d; }
         #button-bar { dock: bottom; height: 3; align: center middle; background: #161b22; }
         #convert-btn { background: #238636; color: white; width: 22; margin-left: 1; }
         #docx-btn { background: #1f6feb; color: white; width: 22; margin-left: 1; }
@@ -773,6 +773,8 @@ if HAS_TEXTUAL:
                     with Vertical(id="log-area"):
                         yield ProgressBar(id="progress-bar", show_eta=False); yield RichLog(id="log", markup=True)
                 with TabPane("Paste & Preview"):
+                    with Horizontal(id="preview-controls", style="height: 3; align: right middle; padding-right: 1;"):
+                         yield Button("👁️ Preview Rendered", id="toggle-view-btn", disabled=True, variant="primary")
                     with ContentSwitcher(initial="md-preview", id="preview-switcher"):
                         yield Markdown(id="md-preview")
                         yield TextArea(id="paste-area")
@@ -788,7 +790,6 @@ if HAS_TEXTUAL:
             if self.paste_content:
                 self.query_one("#paste-area", TextArea).text = self.paste_content
                 self.query_one("#source-switch", Switch).value = True
-                self.query_one("#preview-switcher", ContentSwitcher).current = "paste-area"
         
         def on_select_changed(self, event: Select.Changed):
             if event.select.id == "theme-select":
@@ -801,10 +802,19 @@ if HAS_TEXTUAL:
             elif event.switch.id == "save-diags-switch": self.settings["save_diagrams"] = event.value
             elif event.switch.id == "source-switch":
                 self.use_paste_source = event.value
+                toggle_btn = self.query_one("#toggle-view-btn", Button)
+                switcher = self.query_one("#preview-switcher", ContentSwitcher)
+
                 if event.value:
-                    self.query_one("#preview-switcher", ContentSwitcher).current = "paste-area"
+                    # Paste Mode
+                    switcher.current = "paste-area"
+                    toggle_btn.disabled = False
+                    toggle_btn.label = "👁️ Preview Rendered"
+                    toggle_btn.variant = "primary"
                 else:
-                    self.query_one("#preview-switcher", ContentSwitcher).current = "md-preview"
+                    # File Mode
+                    switcher.current = "md-preview"
+                    toggle_btn.disabled = True
                     # Update preview when switching back to file mode
                     self.update_file_preview(self.query_one("#md-input", Input).value)
             save_settings(self.settings)
@@ -830,6 +840,21 @@ if HAS_TEXTUAL:
             elif event.button.id == "browse-out-btn":
                 d = open_folder_dialog()
                 if d: self.query_one("#out-input", Input).value = d
+            elif event.button.id == "toggle-view-btn":
+                switcher = self.query_one("#preview-switcher", ContentSwitcher)
+                btn = event.button
+                if switcher.current == "paste-area":
+                    # Switch to Preview
+                    content = self.query_one("#paste-area", TextArea).text
+                    self.query_one("#md-preview", Markdown).update(content)
+                    switcher.current = "md-preview"
+                    btn.label = "✏️ Back to Edit"
+                    btn.variant = "default"
+                else:
+                    # Switch back to Edit
+                    switcher.current = "paste-area"
+                    btn.label = "👁️ Preview Rendered"
+                    btn.variant = "primary"
 
         def action_open_pdf(self):
             if self.last_output_path and self.last_output_path.exists(): os.startfile(str(self.last_output_path))
