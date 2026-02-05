@@ -1,5 +1,5 @@
 """
-Markdown to PDF Converter TUI v2.8.2 Pro - Forensic Suite
+Markdown to PDF Converter TUI v2.8.2 Pro - Suite
 The most feature-rich version ever. Zero-bullshit logic.
 Now with background CLI mode for automated exports and high-contrast light-mode.
 Added themes and png output to docx
@@ -21,6 +21,7 @@ import uuid
 import urllib.request
 import shutil
 import hashlib
+import webbrowser
 
 # Textual imports (only if needed)
 try:
@@ -743,6 +744,9 @@ if HAS_TEXTUAL:
         #convert-btn { background: #238636; color: white; width: 22; margin-left: 1; }
         #docx-btn { background: #1f6feb; color: white; width: 22; margin-left: 1; }
         #preview-controls { height: 3; align: right middle; padding-right: 1; }
+        #editor-toolbar { height: 3; margin-bottom: 1; align: left middle; background: #21262d; padding-left: 1; }
+        .tool-btn { min-width: 5; margin-right: 1; height: 1; background: #30363d; border: none; }
+        .tool-btn:hover { background: #58a6ff; color: #161b22; }
         """
         BINDINGS = [Binding("ctrl+o", "browse_file"), Binding("ctrl+r", "convert"), Binding("ctrl+d", "convert_docx"), Binding("ctrl+p", "open_pdf"), Binding("f1", "show_help")]
 
@@ -763,7 +767,7 @@ if HAS_TEXTUAL:
                 self.query_one("#md-preview", Markdown).update("Error loading preview.")
 
         def compose(self) -> ComposeResult:
-            yield Static("MDPDFM PRO v3.0 - FORENSIC EDITION", id="app-header")
+            yield Static("MDPDFM PRO v3.0", id="app-header")
             with TabbedContent():
                 with TabPane("🛠️ SETTINGS"):
                     with VerticalScroll():
@@ -790,8 +794,19 @@ if HAS_TEXTUAL:
                     with Vertical(id="log-area"):
                         yield ProgressBar(id="progress-bar", show_eta=False); yield RichLog(id="log", markup=True)
                 with TabPane("Paste & Preview"):
+                    with Horizontal(id="editor-toolbar", classes="toolbar"):
+                        yield Button("B", id="btn-bold", classes="tool-btn")
+                        yield Button("I", id="btn-italic", classes="tool-btn")
+                        yield Button("Code", id="btn-code", classes="tool-btn")
+                        yield Button("List", id="btn-list", classes="tool-btn")
+                        yield Button("Link", id="btn-link", classes="tool-btn")
+                        yield Button("H1", id="btn-h1", classes="tool-btn")
+                        yield Button("H2", id="btn-h2", classes="tool-btn")
+                        yield Button("H3", id="btn-h3", classes="tool-btn")
+
                     with Horizontal(id="preview-controls"):
-                         yield Button("👁️ Preview Rendered", id="toggle-view-btn", disabled=True, variant="primary")
+                         yield Button("👁️ TUI Preview", id="toggle-view-btn", disabled=True, variant="primary")
+                         yield Button("🌐 Browser Preview", id="browser-preview-btn", variant="default")
                     with ContentSwitcher(initial="md-preview", id="preview-switcher"):
                         yield Markdown(id="md-preview")
                         yield TextArea(id="paste-area")
@@ -826,7 +841,7 @@ if HAS_TEXTUAL:
                     # Paste Mode
                     switcher.current = "paste-area"
                     toggle_btn.disabled = False
-                    toggle_btn.label = "👁️ Preview Rendered"
+                    toggle_btn.label = "👁️ TUI Preview"
                     toggle_btn.variant = "primary"
                 else:
                     # File Mode
@@ -845,7 +860,40 @@ if HAS_TEXTUAL:
                  self.settings["output_folder"] = event.value
                  save_settings(self.settings)
 
+        def handle_editor_button(self, btn_id: str) -> None:
+            ta = self.query_one("#paste-area", TextArea)
+            sel = ta.selection
+            text = ta.selected_text
+
+            if btn_id == "btn-bold":
+                ta.replace(f"**{text}**", sel.start, sel.end)
+            elif btn_id == "btn-italic":
+                ta.replace(f"*{text}*", sel.start, sel.end)
+            elif btn_id == "btn-code":
+                if "\n" in text:
+                    ta.replace(f"```\n{text}\n```", sel.start, sel.end)
+                else:
+                    ta.replace(f"`{text}`", sel.start, sel.end)
+            elif btn_id == "btn-link":
+                ta.replace(f"[{text}](url)", sel.start, sel.end)
+            elif btn_id == "btn-list":
+                lines = text.split('\n')
+                new_lines = [f"- {line}" for line in lines]
+                ta.replace("\n".join(new_lines), sel.start, sel.end)
+            elif btn_id == "btn-h1":
+                ta.replace(f"# {text}", sel.start, sel.end)
+            elif btn_id == "btn-h2":
+                ta.replace(f"## {text}", sel.start, sel.end)
+            elif btn_id == "btn-h3":
+                ta.replace(f"### {text}", sel.start, sel.end)
+
+            ta.focus()
+
         async def on_button_pressed(self, event: Button.Pressed):
+            if event.button.id and event.button.id.startswith("btn-"):
+                self.handle_editor_button(event.button.id)
+                return
+
             if event.button.id == "convert-btn": self.run_conversion(fmt="pdf")
             elif event.button.id == "docx-btn": self.run_conversion(fmt="docx")
             elif event.button.id == "open-btn": self.action_open_pdf()
@@ -857,6 +905,8 @@ if HAS_TEXTUAL:
             elif event.button.id == "browse-out-btn":
                 d = open_folder_dialog()
                 if d: self.query_one("#out-input", Input).value = d
+            elif event.button.id == "browser-preview-btn":
+                self.action_browser_preview()
             elif event.button.id == "toggle-view-btn":
                 switcher = self.query_one("#preview-switcher", ContentSwitcher)
                 btn = event.button
@@ -870,11 +920,41 @@ if HAS_TEXTUAL:
                 else:
                     # Switch back to Edit
                     switcher.current = "paste-area"
-                    btn.label = "👁️ Preview Rendered"
+                    btn.label = "👁️ TUI Preview"
                     btn.variant = "primary"
 
         def action_open_pdf(self):
             if self.last_output_path and self.last_output_path.exists(): os.startfile(str(self.last_output_path))
+
+        def action_browser_preview(self):
+            content = ""
+            if self.use_paste_source:
+                content = self.query_one("#paste-area", TextArea).text
+            else:
+                path_str = self.query_one("#md-input", Input).value
+                if path_str:
+                    path = Path(path_str).resolve()
+                    if path.exists():
+                        content = path.read_text(encoding="utf-8")
+
+            if not content:
+                self.query_one("#log", RichLog).write("[yellow]Nothing to preview.[/]")
+                return
+
+            self.worker_browser_preview(content)
+
+        @work(thread=True)
+        def worker_browser_preview(self, content: str):
+             try:
+                temp_dir = Path(tempfile.mkdtemp())
+                processed_content = process_resources(content, temp_dir)
+                html = create_html_content(processed_content, self.settings)
+                preview_path = temp_dir / "preview.html"
+                preview_path.write_text(html, encoding="utf-8")
+                webbrowser.open(f"file://{preview_path.resolve()}")
+                self.call_from_thread(lambda: self.query_one("#log", RichLog).write("[green]Browser preview opened.[/]"))
+             except Exception as e:
+                self.call_from_thread(lambda: self.query_one("#log", RichLog).write(f"[red]Preview Error: {e}[/]"))
 
         @work(exclusive=True, thread=True)
         def run_conversion(self, fmt="pdf") -> None:
