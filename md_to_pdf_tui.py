@@ -762,11 +762,17 @@ if HAS_TEXTUAL:
 
         def update_file_preview(self, filepath: str) -> None:
             try:
-                # Reset container to just text if needed, but for now just update text
-                # We might need to clear custom widgets if they exist
+                # Reset container to just text if needed
                 container = self.query_one("#md-view", VerticalScroll)
-                # If we have mixed content (more than 1 child), reset
-                if len(container.children) > 1:
+
+                # Check if we need to reset the view (if it's not just the standard markdown widget)
+                should_reset = True
+                if len(container.children) == 1:
+                    child = container.children[0]
+                    if isinstance(child, Markdown) and child.id == "md-preview":
+                        should_reset = False
+
+                if should_reset:
                     container.remove_children()
                     container.mount(Markdown(id="md-preview"))
 
@@ -936,7 +942,14 @@ if HAS_TEXTUAL:
 
                     # Reset view to text only first
                     container = self.query_one("#md-view", VerticalScroll)
-                    if len(container.children) > 1:
+
+                    should_reset = True
+                    if len(container.children) == 1:
+                        child = container.children[0]
+                        if isinstance(child, Markdown) and child.id == "md-preview":
+                            should_reset = False
+
+                    if should_reset:
                         container.remove_children()
                         container.mount(Markdown(id="md-preview"))
 
@@ -1010,7 +1023,7 @@ if HAS_TEXTUAL:
                 switcher = self.query_one("#preview-switcher", ContentSwitcher)
                 switcher.current = "md-view"
                 self.query_one("#toggle-view-btn", Button).label = "✏️ Back to Edit"
-                self.query_one("#toggle-view-btn", variant="default")
+                self.query_one("#toggle-view-btn", Button).variant = "default"
 
             self.worker_render_tui(content)
 
