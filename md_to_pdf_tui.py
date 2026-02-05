@@ -21,6 +21,7 @@ import uuid
 import urllib.request
 import shutil
 import hashlib
+from functools import partial
 
 # Textual imports (only if needed)
 try:
@@ -700,7 +701,7 @@ async def generate_docx_core(md_path: Path, docx_path: Path, log_fn=print, prog_
     # Save modified markdown
     tmp_md = md_path.with_suffix(f".{uuid.uuid4()}.tmp.md")
     temp_files_to_cleanup.append(tmp_md)
-    tmp_md.write_text(modified_md, encoding="utf-8")
+    await asyncio.get_running_loop().run_in_executor(None, partial(tmp_md.write_text, modified_md, encoding="utf-8"))
     
     cmd = ["pandoc", str(tmp_md), "-o", str(docx_path)]
     
