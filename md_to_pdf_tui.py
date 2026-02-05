@@ -734,19 +734,33 @@ if HAS_TEXTUAL:
         CSS = """
         Screen { background: #0d1117; }
         #app-header { dock: top; height: 1; background: #161b22; color: #58a6ff; text-align: center; }
-        .section { background: #161b22; border: solid #30363d; padding: 1 2; margin-bottom: 1; }
+        .section { background: #161b22; border: solid #30363d; padding: 0 1; margin-bottom: 1; }
         .row { height: 3; align: left middle; }
         .row Label { width: 18; }
         .row Input { width: 1fr; border: solid #30363d; }
-        #log-area { height: 10; background: #010409; border-top: solid #30363d; }
+        #log-area { height: 20%; min-height: 3; max-height: 10; background: #010409; border-top: solid #30363d; }
         #button-bar { dock: bottom; height: 3; align: center middle; background: #161b22; }
         #convert-btn { background: #238636; color: white; width: 22; margin-left: 1; }
         #docx-btn { background: #1f6feb; color: white; width: 22; margin-left: 1; }
+        #preview-controls { height: 3; align: right middle; padding-right: 1; }
         """
         BINDINGS = [Binding("ctrl+o", "browse_file"), Binding("ctrl+r", "convert"), Binding("ctrl+d", "convert_docx"), Binding("ctrl+p", "open_pdf"), Binding("f1", "show_help")]
 
         def __init__(self, cli_file=None, paste_content=None):
             super().__init__(); self.cli_file = cli_file; self.paste_content = paste_content; self.settings = load_settings(); self.recent_files = load_recent_files(); self.last_output_path = None; self.use_paste_source = bool(paste_content)
+
+        def update_file_preview(self, filepath: str) -> None:
+            try:
+                path = Path(filepath).resolve()
+                if path.exists() and path.is_file():
+                    content = path.read_text(encoding="utf-8")
+                    if len(content) > 20000:
+                        content = content[:20000] + "\n\n...(Preview truncated)..."
+                    self.query_one("#md-preview", Markdown).update(content)
+                else:
+                    self.query_one("#md-preview", Markdown).update("")
+            except Exception:
+                self.query_one("#md-preview", Markdown).update("Error loading preview.")
 
         def compose(self) -> ComposeResult:
             yield Static("MDPDFM PRO v3.0 - FORENSIC EDITION", id="app-header")
@@ -776,6 +790,8 @@ if HAS_TEXTUAL:
                     with Vertical(id="log-area"):
                         yield ProgressBar(id="progress-bar", show_eta=False); yield RichLog(id="log", markup=True)
                 with TabPane("Paste & Preview"):
+                    with Horizontal(id="preview-controls"):
+                         yield Button("👁️ Preview Rendered", id="toggle-view-btn", disabled=True, variant="primary")
                     with ContentSwitcher(initial="md-preview", id="preview-switcher"):
                         yield Markdown(id="md-preview")
                         yield TextArea(id="paste-area")
@@ -785,11 +801,12 @@ if HAS_TEXTUAL:
                 yield Button("▶ GENERATE PDF", id="convert-btn")
 
         def on_mount(self):
-            if self.cli_file: self.query_one("#md-input", Input).value = str(Path(self.cli_file).resolve())
+            if self.cli_file:
+                self.query_one("#md-input", Input).value = str(Path(self.cli_file).resolve())
+                self.update_file_preview(self.cli_file)
             if self.paste_content:
                 self.query_one("#paste-area", TextArea).text = self.paste_content
                 self.query_one("#source-switch", Switch).value = True
-                self.query_one("#preview-switcher", ContentSwitcher).current = "paste-area"
         
         def on_select_changed(self, event: Select.Changed):
             if event.select.id == "theme-select":
@@ -802,11 +819,26 @@ if HAS_TEXTUAL:
             elif event.switch.id == "save-diags-switch": self.settings["save_diagrams"] = event.value
             elif event.switch.id == "source-switch":
                 self.use_paste_source = event.value
+                toggle_btn = self.query_one("#toggle-view-btn", Button)
+                switcher = self.query_one("#preview-switcher", ContentSwitcher)
+
                 if event.value:
-                    self.query_one("#preview-switcher", ContentSwitcher).current = "paste-area"
+                    # Paste Mode
+                    switcher.current = "paste-area"
+                    toggle_btn.disabled = False
+                    toggle_btn.label = "👁️ Preview Rendered"
+                    toggle_btn.variant = "primary"
                 else:
-                    self.query_one("#preview-switcher", ContentSwitcher).current = "md-preview"
+                    # File Mode
+                    switcher.current = "md-preview"
+                    toggle_btn.disabled = True
+                    # Update preview when switching back to file mode
+                    self.update_file_preview(self.query_one("#md-input", Input).value)
             save_settings(self.settings)
+
+        def on_input_submitted(self, event: Input.Submitted):
+            if event.input.id == "md-input":
+                self.update_file_preview(event.value)
 
         def on_input_changed(self, event: Input.Changed):
              if event.input.id == "out-input":
@@ -819,10 +851,27 @@ if HAS_TEXTUAL:
             elif event.button.id == "open-btn": self.action_open_pdf()
             elif event.button.id == "browse-btn":
                 f = open_file_dialog()
-                if f: self.query_one("#md-input", Input).value = f
+                if f:
+                    self.query_one("#md-input", Input).value = f
+                    self.update_file_preview(f)
             elif event.button.id == "browse-out-btn":
                 d = open_folder_dialog()
                 if d: self.query_one("#out-input", Input).value = d
+            elif event.button.id == "toggle-view-btn":
+                switcher = self.query_one("#preview-switcher", ContentSwitcher)
+                btn = event.button
+                if switcher.current == "paste-area":
+                    # Switch to Preview
+                    content = self.query_one("#paste-area", TextArea).text
+                    self.query_one("#md-preview", Markdown).update(content)
+                    switcher.current = "md-preview"
+                    btn.label = "✏️ Back to Edit"
+                    btn.variant = "default"
+                else:
+                    # Switch back to Edit
+                    switcher.current = "paste-area"
+                    btn.label = "👁️ Preview Rendered"
+                    btn.variant = "primary"
 
         def action_open_pdf(self):
             if self.last_output_path and self.last_output_path.exists(): os.startfile(str(self.last_output_path))
