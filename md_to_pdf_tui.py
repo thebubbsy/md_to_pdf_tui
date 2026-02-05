@@ -726,6 +726,7 @@ if HAS_TEXTUAL:
         #button-bar { dock: bottom; height: 3; align: center middle; background: #161b22; }
         #convert-btn { background: #238636; color: white; width: 22; margin-left: 1; }
         #docx-btn { background: #1f6feb; color: white; width: 22; margin-left: 1; }
+        #preview-controls { height: 3; align: right middle; padding-right: 1; }
         """
         BINDINGS = [Binding("ctrl+o", "browse_file"), Binding("ctrl+r", "convert"), Binding("ctrl+d", "convert_docx"), Binding("ctrl+p", "open_pdf"), Binding("f1", "show_help")]
 
@@ -773,7 +774,7 @@ if HAS_TEXTUAL:
                     with Vertical(id="log-area"):
                         yield ProgressBar(id="progress-bar", show_eta=False); yield RichLog(id="log", markup=True)
                 with TabPane("Paste & Preview"):
-                    with Horizontal(id="preview-controls", style="height: 3; align: right middle; padding-right: 1;"):
+                    with Horizontal(id="preview-controls"):
                          yield Button("👁️ Preview Rendered", id="toggle-view-btn", disabled=True, variant="primary")
                     with ContentSwitcher(initial="md-preview", id="preview-switcher"):
                         yield Markdown(id="md-preview")
