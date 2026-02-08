@@ -752,7 +752,13 @@ if HAS_TEXTUAL:
         .tool-btn { min-width: 5; margin-right: 1; height: 1; background: #30363d; border: none; }
         .tool-btn:hover { background: #58a6ff; color: #161b22; }
         """
-        BINDINGS = [Binding("ctrl+o", "browse_file"), Binding("ctrl+r", "convert"), Binding("ctrl+d", "convert_docx"), Binding("ctrl+p", "open_pdf"), Binding("f1", "show_help")]
+        BINDINGS = [
+            Binding("ctrl+o", "browse_file", "Browse"),
+            Binding("ctrl+r", "convert", "To PDF"),
+            Binding("ctrl+d", "convert_docx", "To DOCX"),
+            Binding("ctrl+p", "open_pdf", "Open PDF"),
+            Binding("f1", "show_help", "Help")
+        ]
 
         def __init__(self, cli_file=None, paste_content=None):
             super().__init__(); self.cli_file = cli_file; self.paste_content = paste_content; self.settings = load_settings(); self.recent_files = load_recent_files(); self.last_output_path = None; self.use_paste_source = bool(paste_content)
@@ -835,6 +841,7 @@ if HAS_TEXTUAL:
                 yield Button("📄 Open File", id="open-btn", disabled=True)
                 yield Button("📝 Export DOCX", id="docx-btn")
                 yield Button("▶ GENERATE PDF", id="convert-btn")
+            yield Footer()
 
         def on_mount(self):
             if self.cli_file:
