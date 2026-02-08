@@ -6,6 +6,7 @@ Added themes and png output to docx
 """
 
 import asyncio
+import concurrent.futures
 import json
 import os
 import subprocess
@@ -192,11 +193,8 @@ def process_resources(md_text: str, temp_dir: Path) -> str:
     def _hash_url(url: str) -> str:
         return hashlib.md5(url.encode()).hexdigest()
 
-    def replace_link(match):
-        alt = match.group(1)
-        url = match.group(2)
-
-        # Determine if it's a URL or local path
+    def _process_single_resource(url: str) -> tuple[str, Optional[str]]:
+        # Returns (url, local_filename) or (url, None)
         if url.startswith("http://") or url.startswith("https://"):
             try:
                 # Download
@@ -209,13 +207,9 @@ def process_resources(md_text: str, temp_dir: Path) -> str:
                     req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
                     with urllib.request.urlopen(req, timeout=15) as response, open(local_path, 'wb') as out_file:
                         shutil.copyfileobj(response, out_file)
-
-                # Since we are running conversion in the same dir as the md file (temp_dir),
-                # just the filename is enough.
-                return f'![{alt}]({local_path.name})'
-            except Exception as e:
-                # print(f"Failed to download {url}: {e}")
-                return match.group(0) # Keep original if failed
+                return url, local_filename
+            except Exception:
+                return url, None
         else:
             # Local file
             try:
@@ -224,42 +218,47 @@ def process_resources(md_text: str, temp_dir: Path) -> str:
                     dest_path = temp_dir / src_path.name
                     if not dest_path.exists():
                         shutil.copy2(src_path, dest_path)
-                    return f'![{alt}]({dest_path.name})'
-                return match.group(0)
-            except Exception as e:
-                # print(f"Failed to process local file {url}: {e}")
-                return match.group(0)
+                    return url, dest_path.name
+                return url, None
+            except Exception:
+                return url, None
+
+    # 1. Identify all unique URLs
+    urls = set()
+    for match in MD_IMG_PATTERN.finditer(md_text):
+        urls.add(match.group(2))
+    for match in HTML_IMG_PATTERN.finditer(md_text):
+        urls.add(match.group(1))
+
+    # 2. Process in parallel
+    url_map = {}
+    if urls:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=min(32, len(urls) + 4)) as executor:
+            future_to_url = {executor.submit(_process_single_resource, url): url for url in urls}
+            for future in concurrent.futures.as_completed(future_to_url):
+                try:
+                    url, local_name = future.result()
+                    if local_name:
+                        url_map[url] = local_name
+                except Exception:
+                    pass
+
+    # 3. Replace in text
+    def replace_link(match):
+        alt = match.group(1)
+        url = match.group(2)
+        local_name = url_map.get(url)
+        if local_name:
+            return f'![{alt}]({local_name})'
+        return match.group(0)
 
     def replace_html_src(match):
         url = match.group(1)
         full_tag = match.group(0)
-
-        if url.startswith("http://") or url.startswith("https://"):
-            try:
-                ext = Path(url).suffix or ".png"
-                if "?" in ext: ext = ext.split("?")[0]
-                local_filename = f"remote_{_hash_url(url)}{ext}"
-                local_path = temp_dir / local_filename
-
-                if not local_path.exists():
-                    req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
-                    with urllib.request.urlopen(req, timeout=15) as response, open(local_path, 'wb') as out_file:
-                        shutil.copyfileobj(response, out_file)
-
-                return full_tag.replace(url, local_path.name)
-            except:
-                return full_tag
-        else:
-            try:
-                src_path = Path(url).resolve()
-                if src_path.exists():
-                    dest_path = temp_dir / src_path.name
-                    if not dest_path.exists():
-                        shutil.copy2(src_path, dest_path)
-                    return full_tag.replace(url, dest_path.name)
-                return full_tag
-            except:
-                return full_tag
+        local_name = url_map.get(url)
+        if local_name:
+            return full_tag.replace(url, local_name)
+        return full_tag
 
     new_text = MD_IMG_PATTERN.sub(replace_link, md_text)
     new_text = HTML_IMG_PATTERN.sub(replace_html_src, new_text)
