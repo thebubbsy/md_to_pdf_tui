@@ -779,7 +779,19 @@ if HAS_TEXTUAL:
                         content = content[:20000] + "\n\n...(Preview truncated)..."
                     self.query_one("#md-preview", Markdown).update(content)
                 else:
-                    self.query_one("#md-preview", Markdown).update("")
+                    welcome_msg = """
+# 👋 Welcome to MDPDFM Pro!
+
+No file is currently selected.
+
+**To get started:**
+1. Enter a file path in the **Input** field above.
+2. Or click **Browse** to select a file.
+3. Or switch to the **Paste & Preview** tab to type Markdown directly.
+
+**Pro Tip:** Press `Ctrl+O` to quickly browse for files.
+"""
+                    self.query_one("#md-preview", Markdown).update(welcome_msg)
             except Exception:
                 pass # Fail silently or log
 
@@ -839,6 +851,9 @@ if HAS_TEXTUAL:
             if self.cli_file:
                 self.query_one("#md-input", Input).value = str(Path(self.cli_file).resolve())
                 self.update_file_preview(self.cli_file)
+            else:
+                self.update_file_preview("")
+
             if self.paste_content:
                 self.query_one("#paste-area", TextArea).text = self.paste_content
                 self.query_one("#source-switch", Switch).value = True
