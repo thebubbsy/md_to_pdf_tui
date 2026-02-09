@@ -370,7 +370,8 @@ async def generate_pdf_core(md_path: Path, pdf_path: Path, settings: dict, log_f
         v_w = 800 if a4_width else 1200
         page = await browser.new_page(viewport={"width": v_w, "height": 1000})
         abs_url = f"file:///{str(tmp_h.resolve()).replace(os.sep, '/')}"
-        await page.goto(abs_url, wait_until="networkidle")
+        # using 'load' instead of 'networkidle' saves ~500ms per PDF
+        await page.goto(abs_url, wait_until="load")
         
         # Smart wait for diagrams
         mermaid_count = await page.locator(".mermaid").count()
@@ -442,7 +443,8 @@ async def render_png_page(browser, md_path: Path, png_path: Path, settings: dict
 
     abs_url = f"file:///{str(tmp_h.resolve()).replace(os.sep, '/')}"
     if log_fn: log_fn(f"Loading: {abs_url}")
-    await page.goto(abs_url, wait_until="networkidle")
+    # using 'load' instead of 'networkidle' saves ~500ms
+    await page.goto(abs_url, wait_until="load")
 
     # Wait for mermaid to finish rendering
     try:
@@ -649,7 +651,7 @@ async def generate_docx_core(md_path: Path, docx_path: Path, log_fn=print, prog_
             browser = await p.chromium.launch()
             page = await browser.new_page(device_scale_factor=2) # Higher DPI for docs
             abs_url = f"file:///{str(tmp_h.resolve()).replace(os.sep, '/')}"
-            await page.goto(abs_url, wait_until="networkidle")
+            await page.goto(abs_url, wait_until="load")
             
             # Wait specifically for mermaid to render
             try:
@@ -1048,7 +1050,7 @@ if HAS_TEXTUAL:
                      async with async_playwright() as p:
                         browser = await p.chromium.launch()
                         page = await browser.new_page(device_scale_factor=2)
-                        await page.goto(f"file://{tmp_h.resolve()}", wait_until="networkidle")
+                        await page.goto(f"file://{tmp_h.resolve()}", wait_until="load")
 
                         try:
                             await page.wait_for_selector(".mermaid svg", timeout=5000)
