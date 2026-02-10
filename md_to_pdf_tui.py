@@ -267,6 +267,7 @@ def is_pure_mermaid(text: str) -> bool:
 # --- Core Conversion Logic (Decoupled from TUI) ---
 # --- Core Conversion Logic (Decoupled from TUI) ---
 _MD_PARSER = None
+_PANDOC_AVAILABLE: Optional[bool] = None
 
 def _get_md_parser():
     global _MD_PARSER
@@ -516,17 +517,25 @@ async def generate_png_core(md_path: Path, png_path: Path, settings: dict, log_f
             await browser.close()
 
 async def generate_docx_core(md_path: Path, docx_path: Path, log_fn=print, prog_fn=None, settings: dict=None) -> None:
+    global _PANDOC_AVAILABLE
     if log_fn: log_fn(f"Converting to DOCX: {md_path.name}")
     if prog_fn: prog_fn(10)
     
     # Check for pandoc
-    try:
-        proc = await asyncio.create_subprocess_exec("pandoc", "--version", stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.DEVNULL)
-        await proc.wait()
-        if proc.returncode != 0:
-            raise subprocess.CalledProcessError(proc.returncode, ["pandoc", "--version"])
-    except FileNotFoundError:
+    if _PANDOC_AVAILABLE is False:
         raise RuntimeError("Pandoc not found. Please install pandoc to export to DOCX.")
+
+    if _PANDOC_AVAILABLE is None:
+        try:
+            proc = await asyncio.create_subprocess_exec("pandoc", "--version", stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.DEVNULL)
+            await proc.wait()
+            if proc.returncode != 0:
+                _PANDOC_AVAILABLE = False
+                raise subprocess.CalledProcessError(proc.returncode, ["pandoc", "--version"])
+            _PANDOC_AVAILABLE = True
+        except FileNotFoundError:
+            _PANDOC_AVAILABLE = False
+            raise RuntimeError("Pandoc not found. Please install pandoc to export to DOCX.")
     
     # Determine Theme Colors for Alerts
     theme_name = settings.get("theme", "GitHub Light") if settings else "GitHub Light"
