@@ -828,8 +828,8 @@ No file is currently selected.
                         yield ProgressBar(id="progress-bar", show_eta=False); yield RichLog(id="log", markup=True)
                 with TabPane("Paste & Preview"):
                     with Horizontal(id="editor-toolbar", classes="toolbar"):
-                        yield Button("B", id="btn-bold", classes="tool-btn")
-                        yield Button("I", id="btn-italic", classes="tool-btn")
+                        yield Button("Bold", id="btn-bold", classes="tool-btn")
+                        yield Button("Italic", id="btn-italic", classes="tool-btn")
                         yield Button("Code", id="btn-code", classes="tool-btn")
                         yield Button("List", id="btn-list", classes="tool-btn")
                         yield Button("Link", id="btn-link", classes="tool-btn")
@@ -850,6 +850,7 @@ No file is currently selected.
                 yield Button("📄 Open File", id="open-btn", disabled=True)
                 yield Button("📝 Export DOCX", id="docx-btn")
                 yield Button("▶ GENERATE PDF", id="convert-btn")
+            yield Footer()
 
         def on_mount(self):
             if self.cli_file:
