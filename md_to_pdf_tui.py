@@ -776,7 +776,9 @@ if HAS_TEXTUAL:
 
                 path = Path(filepath).resolve()
                 if path.exists() and path.is_file():
-                    content = path.read_text(encoding="utf-8")
+                    # Optimized reading: only read first 20k chars to prevent UI freeze on large files
+                    with open(path, "r", encoding="utf-8") as f:
+                        content = f.read(20001)
                     if len(content) > 20000:
                         content = content[:20000] + "\n\n...(Preview truncated)..."
                     self.query_one("#md-preview", Markdown).update(content)
