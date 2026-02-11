@@ -398,8 +398,7 @@ async def generate_pdf_core(md_path: Path, pdf_path: Path, settings: dict, log_f
     if prog_fn: prog_fn(30)
     
     tmp_h = md_path.with_suffix(".tmp.html")
-    with open(tmp_h, "w", encoding="utf-8") as f:
-        f.write(html_content)
+    await asyncio.get_running_loop().run_in_executor(None, tmp_h.write_text, html_content, "utf-8")
     if prog_fn: prog_fn(40)
     
     async with async_playwright() as p:
@@ -465,8 +464,7 @@ async def render_png_page(browser, md_path: Path, png_path: Path, settings: dict
     html_content = create_html_content(md_text, settings)
     
     tmp_h = md_path.with_suffix(".tmp.html")
-    with open(tmp_h, "w", encoding="utf-8") as f:
-        f.write(html_content)
+    await asyncio.get_running_loop().run_in_executor(None, tmp_h.write_text, html_content, "utf-8")
         
     # Use an extreme viewport and device scale for 24K resolution
     page = await browser.new_page(
