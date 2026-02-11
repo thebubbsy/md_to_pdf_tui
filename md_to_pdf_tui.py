@@ -653,13 +653,19 @@ async def generate_docx_core(md_path: Path, docx_path: Path, log_fn=print, prog_
             abs_url = f"file:///{str(tmp_h.resolve()).replace(os.sep, '/')}"
             await page.goto(abs_url, wait_until="load")
             
-            # Wait specifically for mermaid to render
+            # Smart wait for diagrams
             try:
-                await page.wait_for_selector(".mermaid svg", timeout=10000)
-                # Extra safety buffer for animations/layout
-                await page.wait_for_timeout(1500)
-            except:
-                if log_fn: log_fn("Warning: Timeout waiting for diagrams")
+                await page.wait_for_function("""
+                    () => {
+                        const all = document.querySelectorAll('.mermaid');
+                        const processed = document.querySelectorAll('.mermaid[data-processed="true"]');
+                        const error = document.querySelectorAll('.mermaid-error');
+                        return (processed.length + error.length) === all.length;
+                    }
+                """, timeout=10000)
+                await page.wait_for_timeout(500) # Buffer for layout
+            except Exception as e:
+                if log_fn: log_fn(f"Warning: Timeout waiting for diagrams: {e}")
 
             elements = await page.locator(".mermaid").all()
             
