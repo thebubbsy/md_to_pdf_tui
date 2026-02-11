@@ -275,6 +275,42 @@ def is_pure_mermaid(text: str) -> bool:
 
 # --- Core Conversion Logic (Decoupled from TUI) ---
 # --- Core Conversion Logic (Decoupled from TUI) ---
+def sanitize_mermaid_code(code: str) -> str:
+    """
+    Sanitizes mermaid code to prevent "Unsupported markdown" errors in nodes.
+    Specifically handles list markers (-, *, 1.) inside quoted strings.
+    """
+    def replacer_combined(match):
+        if match.group(1) is not None:
+            content = match.group(1)
+            quote = '"'
+        else:
+            content = match.group(2)
+            quote = "'"
+
+        # Regex to find list markers at start of string or after newline
+        # group 1: start or newline
+        # group 2: whitespace
+        # group 3: - or *
+        # group 4: digit+.
+        pattern = r"(^|\n)(\s*)(?:([-*])|(\d+\.))\s+"
+
+        def insert_space(m):
+            prefix = m.group(1) + m.group(2)
+            marker = m.group(3) if m.group(3) else m.group(4)
+            # Insert zero-width space to break the list marker pattern
+            return f"{prefix}{marker}&#8203; "
+
+        new_content = re.sub(pattern, insert_space, content)
+        return f"{quote}{new_content}{quote}"
+
+    # Pattern for double quoted strings or single quoted strings
+    # Group 1: Double quoted content
+    # Group 2: Single quoted content
+    # We use concatenation to avoid quote escaping issues in regex string
+    regex_pattern = r'"((?:[^"\\]|\\.)*)"' + r"|'((?:[^'\\]|\\.)*)'"
+    return re.sub(regex_pattern, replacer_combined, code, flags=re.DOTALL)
+
 _MD_PARSER = None
 
 def _get_md_parser():
@@ -286,7 +322,8 @@ def _get_md_parser():
             t = tokens[idx]
             m_enabled = env.get("mermaid_enabled", True) if env else True
             if t.info.strip() == "mermaid" and m_enabled:
-                return f'<div class="m-wrap"><div class="mermaid">{t.content}</div></div>'
+                content = sanitize_mermaid_code(t.content)
+                return f'<div class="m-wrap"><div class="mermaid">{content}</div></div>'
             return f"<pre><code>{t.content}</code></pre>"
 
         _MD_PARSER.renderer.rules["fence"] = mf
