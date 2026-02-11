@@ -782,7 +782,7 @@ if HAS_TEXTUAL:
                     if len(content) > 20000:
                         content = content[:20000] + "\n\n...(Preview truncated)..."
                     self.query_one("#md-preview", Markdown).update(content)
-                else:
+                elif not filepath or not filepath.strip():
                     welcome_msg = """
 # 👋 Welcome to MDPDFM Pro!
 
@@ -796,6 +796,18 @@ No file is currently selected.
 **Pro Tip:** Press `Ctrl+O` to quickly browse for files.
 """
                     self.query_one("#md-preview", Markdown).update(welcome_msg)
+                else:
+                    error_msg = f"""
+# ⚠️ File Not Found
+
+The file `{filepath}` could not be found.
+
+**Suggestions:**
+- Check the file path for typos.
+- Ensure the file exists on your system.
+- Use the **Browse** button to locate the file safely.
+"""
+                    self.query_one("#md-preview", Markdown).update(error_msg)
             except Exception:
                 pass # Fail silently or log
 

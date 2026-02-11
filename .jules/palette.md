@@ -9,3 +9,7 @@
 ## 2024-05-24 - The Invisible Shortcuts
 **Learning:** Textual apps define key bindings in code but hide them from users unless a `Footer` widget is explicitly yielded. This makes keyboard navigation undiscoverable.
 **Action:** Always yield `Footer()` in the `compose` method for any screen with `BINDINGS` to ensure accessibility.
+
+## 2024-05-24 - The Misleading Welcome
+**Learning:** Showing a generic welcome screen when a user enters an invalid path creates confusion. Specific error states build trust.
+**Action:** Distinguish between "initial state" (empty) and "error state" (invalid input) in previews.
