@@ -187,8 +187,7 @@ def process_resources(md_text: str, temp_dir: Path) -> str:
     """
     Scans markdown text for images and resources.
     Downloads remote images to temp_dir.
-    Copies local images to temp_dir.
-    Updates markdown references to point to local files in temp_dir.
+    Updates markdown references to point to absolute paths for local files.
     """
     def _hash_url(url: str) -> str:
         return hashlib.md5(url.encode()).hexdigest()
@@ -215,10 +214,8 @@ def process_resources(md_text: str, temp_dir: Path) -> str:
             try:
                 src_path = Path(url).resolve()
                 if src_path.exists():
-                    dest_path = temp_dir / src_path.name
-                    if not dest_path.exists():
-                        shutil.copy2(src_path, dest_path)
-                    return url, dest_path.name
+                    # Optimization: Use absolute path directly instead of copying
+                    return url, src_path.as_posix()
                 return url, None
             except Exception:
                 return url, None

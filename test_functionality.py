@@ -12,7 +12,6 @@ class TestProcessResources(unittest.TestCase):
             temp_path = Path(temp_dir)
 
             # Create a dummy image file in the temp dir (representing a source file)
-            # In real usage, source file might be elsewhere, but for simplicity let's put it here
             src_img = temp_path / "source.png"
             src_img.touch()
 
@@ -21,25 +20,23 @@ class TestProcessResources(unittest.TestCase):
             out_dir.mkdir()
 
             # Markdown text referencing the image using absolute path to ensure it's found
-            md_text = f"![alt]({src_img.resolve()})\n<img src='{src_img.resolve()}'>"
+            src_abs_path = src_img.resolve()
+            md_text = f"![alt]({src_abs_path})\n<img src='{src_abs_path}'>"
 
             # Run process_resources
             new_text = process_resources(md_text, out_dir)
 
-            # Verify that the image was copied to out_dir
+            # Verify that the image was NOT copied to out_dir
             dest_img = out_dir / "source.png"
-            self.assertTrue(dest_img.exists(), "Image should be copied to destination directory")
+            self.assertFalse(dest_img.exists(), "Image should NOT be copied to destination directory")
 
-            # Verify that the markdown text was updated to point to the new file name (relative path)
-            # process_resources returns links as just the filename for local files in the same dir
-            expected_link = f"![alt]({dest_img.name})"
+            # Verify that the markdown text points to the absolute path
+            expected_path = src_abs_path.as_posix()
+            expected_link = f"![alt]({expected_path})"
             self.assertIn(expected_link, new_text)
 
             # Verify HTML tag replacement
-            # <img src="source.png">
-            # The regex replacement for HTML might be slightly different depending on implementation
-            # process_resources: return full_tag.replace(url, dest_path.name)
-            expected_html = f"src='{dest_img.name}'"
+            expected_html = f"src='{expected_path}'"
             self.assertIn(expected_html, new_text)
 
 if __name__ == "__main__":
