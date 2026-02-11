@@ -312,6 +312,7 @@ def sanitize_mermaid_code(code: str) -> str:
     return re.sub(regex_pattern, replacer_combined, code, flags=re.DOTALL)
 
 _MD_PARSER = None
+_PANDOC_AVAILABLE = None
 
 def _get_md_parser():
     global _MD_PARSER
@@ -568,12 +569,18 @@ async def generate_docx_core(md_path: Path, docx_path: Path, log_fn=print, prog_
     if prog_fn: prog_fn(10)
     
     # Check for pandoc
-    try:
-        proc = await asyncio.create_subprocess_exec("pandoc", "--version", stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.DEVNULL)
-        await proc.wait()
-        if proc.returncode != 0:
-            raise subprocess.CalledProcessError(proc.returncode, ["pandoc", "--version"])
-    except FileNotFoundError:
+    global _PANDOC_AVAILABLE
+    if _PANDOC_AVAILABLE is None:
+        try:
+            proc = await asyncio.create_subprocess_exec("pandoc", "--version", stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.DEVNULL)
+            await proc.wait()
+            if proc.returncode != 0:
+                raise subprocess.CalledProcessError(proc.returncode, ["pandoc", "--version"])
+            _PANDOC_AVAILABLE = True
+        except FileNotFoundError:
+            _PANDOC_AVAILABLE = False
+
+    if _PANDOC_AVAILABLE is False:
         raise RuntimeError("Pandoc not found. Please install pandoc to export to DOCX.")
     
     # Determine Theme Colors for Alerts
