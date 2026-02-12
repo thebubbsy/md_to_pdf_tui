@@ -800,7 +800,13 @@ if HAS_TEXTUAL:
         .tool-btn { min-width: 5; margin-right: 1; height: 1; background: #30363d; border: none; }
         .tool-btn:hover { background: #58a6ff; color: #161b22; }
         """
-        BINDINGS = [Binding("ctrl+o", "browse_file"), Binding("ctrl+r", "convert"), Binding("ctrl+d", "convert_docx"), Binding("ctrl+p", "open_pdf"), Binding("f1", "show_help")]
+        BINDINGS = [
+            Binding("ctrl+o", "browse_file", "Browse"),
+            Binding("ctrl+r", "convert", "PDF"),
+            Binding("ctrl+d", "convert_docx", "DOCX"),
+            Binding("ctrl+p", "open_pdf", "Open PDF"),
+            Binding("f1", "show_help", "Help")
+        ]
 
         def __init__(self, cli_file=None, paste_content=None):
             super().__init__(); self.cli_file = cli_file; self.paste_content = paste_content; self.settings = load_settings(); self.recent_files = load_recent_files(); self.last_output_path = None; self.use_paste_source = bool(paste_content)
@@ -887,14 +893,14 @@ The file `{filepath}` could not be found.
                         yield ProgressBar(id="progress-bar", show_eta=False); yield RichLog(id="log", markup=True)
                 with TabPane("Paste & Preview"):
                     with Horizontal(id="editor-toolbar", classes="toolbar"):
-                        yield Button("Bold", id="btn-bold", classes="tool-btn")
-                        yield Button("Italic", id="btn-italic", classes="tool-btn")
-                        yield Button("Code", id="btn-code", classes="tool-btn")
-                        yield Button("List", id="btn-list", classes="tool-btn")
-                        yield Button("Link", id="btn-link", classes="tool-btn")
-                        yield Button("H1", id="btn-h1", classes="tool-btn")
-                        yield Button("H2", id="btn-h2", classes="tool-btn")
-                        yield Button("H3", id="btn-h3", classes="tool-btn")
+                        yield Button("Bold", id="btn-bold", classes="tool-btn", tooltip="Bold (**text**)")
+                        yield Button("Italic", id="btn-italic", classes="tool-btn", tooltip="Italic (*text*)")
+                        yield Button("Code", id="btn-code", classes="tool-btn", tooltip="Code (`text`)")
+                        yield Button("List", id="btn-list", classes="tool-btn", tooltip="List (- item)")
+                        yield Button("Link", id="btn-link", classes="tool-btn", tooltip="Link ([text](url))")
+                        yield Button("H1", id="btn-h1", classes="tool-btn", tooltip="Heading 1 (# text)")
+                        yield Button("H2", id="btn-h2", classes="tool-btn", tooltip="Heading 2 (## text)")
+                        yield Button("H3", id="btn-h3", classes="tool-btn", tooltip="Heading 3 (### text)")
 
                     with Horizontal(id="preview-controls"):
                          yield Button("👁️ TUI Preview", id="toggle-view-btn", disabled=True, variant="primary")

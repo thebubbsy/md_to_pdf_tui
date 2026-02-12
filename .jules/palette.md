@@ -13,3 +13,7 @@
 ## 2024-05-24 - The Misleading Welcome
 **Learning:** Showing a generic welcome screen when a user enters an invalid path creates confusion. Specific error states build trust.
 **Action:** Distinguish between "initial state" (empty) and "error state" (invalid input) in previews.
+
+## 2024-05-24 - The Silent Footer
+**Learning:** Textual `BINDINGS` without explicit descriptions default to raw action names in the `Footer`, confusing users with internal terminology.
+**Action:** Always provide the 3rd argument (description) in `Binding` definitions to ensure user-friendly labels.
