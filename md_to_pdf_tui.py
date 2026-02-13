@@ -999,14 +999,10 @@ The file `{filepath}` could not be found.
                 self.handle_editor_button(event.button.id)
                 return
 
-            if event.button.id == "convert-btn": self.run_conversion(fmt="pdf")
-            elif event.button.id == "docx-btn": self.run_conversion(fmt="docx")
+            if event.button.id == "convert-btn": self.action_convert()
+            elif event.button.id == "docx-btn": self.action_convert_docx()
             elif event.button.id == "open-btn": self.action_open_pdf()
-            elif event.button.id == "browse-btn":
-                f = open_file_dialog()
-                if f:
-                    self.query_one("#md-input", Input).value = f
-                    self.update_file_preview(f)
+            elif event.button.id == "browse-btn": self.action_browse_file()
             elif event.button.id == "browse-out-btn":
                 d = open_folder_dialog()
                 if d: self.query_one("#out-input", Input).value = d
@@ -1043,6 +1039,21 @@ The file `{filepath}` could not be found.
                     switcher.current = "paste-area"
                     btn.label = "👁️ TUI Preview"
                     btn.variant = "primary"
+
+        def action_browse_file(self):
+            f = open_file_dialog()
+            if f:
+                self.query_one("#md-input", Input).value = f
+                self.update_file_preview(f)
+
+        def action_convert(self):
+            self.run_conversion(fmt="pdf")
+
+        def action_convert_docx(self):
+            self.run_conversion(fmt="docx")
+
+        def action_show_help(self):
+            self.push_screen(HelpScreen())
 
         def action_open_pdf(self):
             if self.last_output_path and self.last_output_path.exists(): os.startfile(str(self.last_output_path))
