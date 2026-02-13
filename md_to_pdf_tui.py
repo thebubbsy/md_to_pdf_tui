@@ -227,6 +227,10 @@ def process_resources(md_text: str, temp_dir: Path) -> str:
     for match in HTML_IMG_PATTERN.finditer(md_text):
         urls.add(match.group(1))
 
+    # Optimization: Early return if no resources to process, avoiding expensive substitution passes
+    if not urls:
+        return md_text
+
     # 2. Process in parallel
     url_map = {}
     if urls:
@@ -484,12 +488,19 @@ async def render_png_page(browser, md_path: Path, png_path: Path, settings: dict
     # Wait for mermaid to finish rendering
     try:
         if log_fn: log_fn("Waiting for Mermaid SVG (60s timeout)...")
-        # Wait for either a successful render or an error message
-        await page.wait_for_function("""
-            () => document.querySelector('.mermaid svg') ||
-                    document.querySelector('.mermaid-error') ||
-                    document.querySelector('.mermaid[data-processed="true"]')
-        """, timeout=60000)
+
+        # Check if mermaid blocks exist first to avoid 60s timeout on files without diagrams
+        has_mermaid = await page.evaluate("() => document.querySelectorAll('.mermaid').length > 0")
+
+        if not has_mermaid:
+            if log_fn: log_fn("No mermaid diagrams found to wait for.")
+        else:
+            # Wait for either a successful render or an error message
+            await page.wait_for_function("""
+                () => document.querySelector('.mermaid svg') ||
+                        document.querySelector('.mermaid-error') ||
+                        document.querySelector('.mermaid[data-processed="true"]')
+            """, timeout=60000)
         
         # Check for error elements or "Syntax error" in SVG
         is_error = await page.evaluate("""
