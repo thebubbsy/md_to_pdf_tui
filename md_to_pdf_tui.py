@@ -239,6 +239,9 @@ def process_resources(md_text: str, temp_dir: Path) -> str:
                         url_map[url] = local_name
                 except Exception:
                     pass
+    else:
+        # Optimization: No resources found, return early to avoid unnecessary regex substitution passes
+        return md_text
 
     # 3. Replace in text
     def replace_link(match):
