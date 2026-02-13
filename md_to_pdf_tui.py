@@ -6,6 +6,7 @@ Added themes and png output to docx
 """
 
 import asyncio
+import concurrent.futures
 import json
 import os
 import subprocess
@@ -177,26 +178,22 @@ def open_folder_dialog() -> Optional[str]:
 MD_IMG_PATTERN = re.compile(r'!\[([^\]]*)\]\s*\(\s*([^\s)]+)(?:\s+["\'].*?["\'])?\s*\)')
 # Regex for HTML images
 HTML_IMG_PATTERN = re.compile(r'<img\s+[^>]*src=["\']([^"\']+)["\'][^>]*>')
-# Regex for Alerts (GitHub style)
+# Regex for Alerts
 ALERT_PATTERN = re.compile(r"^\s*>\s*\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\]", re.IGNORECASE)
-# Regex for Mermaid blocks
+# Regex for Mermaid
 MERMAID_PATTERN = re.compile(r"^(?:`{3,}|~{3,})mermaid\s*\n(.*?)\n(?:`{3,}|~{3,})", re.DOTALL | re.MULTILINE)
 
 def process_resources(md_text: str, temp_dir: Path) -> str:
     """
     Scans markdown text for images and resources.
     Downloads remote images to temp_dir.
-    Copies local images to temp_dir.
-    Updates markdown references to point to local files in temp_dir.
+    Updates markdown references to point to absolute paths for local files.
     """
     def _hash_url(url: str) -> str:
         return hashlib.md5(url.encode()).hexdigest()
 
-    def replace_link(match):
-        alt = match.group(1)
-        url = match.group(2)
-
-        # Determine if it's a URL or local path
+    def _process_single_resource(url: str) -> tuple[str, Optional[str]]:
+        # Returns (url, local_filename) or (url, None)
         if url.startswith("http://") or url.startswith("https://"):
             try:
                 # Download
@@ -209,57 +206,56 @@ def process_resources(md_text: str, temp_dir: Path) -> str:
                     req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
                     with urllib.request.urlopen(req, timeout=15) as response, open(local_path, 'wb') as out_file:
                         shutil.copyfileobj(response, out_file)
-
-                # Since we are running conversion in the same dir as the md file (temp_dir),
-                # just the filename is enough.
-                return f'![{alt}]({local_path.name})'
-            except Exception as e:
-                # print(f"Failed to download {url}: {e}")
-                return match.group(0) # Keep original if failed
+                return url, local_filename
+            except Exception:
+                return url, None
         else:
             # Local file
             try:
                 src_path = Path(url).resolve()
                 if src_path.exists():
-                    dest_path = temp_dir / src_path.name
-                    if not dest_path.exists():
-                        shutil.copy2(src_path, dest_path)
-                    return f'![{alt}]({dest_path.name})'
-                return match.group(0)
-            except Exception as e:
-                # print(f"Failed to process local file {url}: {e}")
-                return match.group(0)
+                    # Optimization: Use absolute path directly instead of copying
+                    return url, src_path.as_posix()
+                return url, None
+            except Exception:
+                return url, None
+
+    # 1. Identify all unique URLs
+    urls = set()
+    for match in MD_IMG_PATTERN.finditer(md_text):
+        urls.add(match.group(2))
+    for match in HTML_IMG_PATTERN.finditer(md_text):
+        urls.add(match.group(1))
+
+    # 2. Process in parallel
+    url_map = {}
+    if urls:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=min(32, len(urls) + 4)) as executor:
+            future_to_url = {executor.submit(_process_single_resource, url): url for url in urls}
+            for future in concurrent.futures.as_completed(future_to_url):
+                try:
+                    url, local_name = future.result()
+                    if local_name:
+                        url_map[url] = local_name
+                except Exception:
+                    pass
+
+    # 3. Replace in text
+    def replace_link(match):
+        alt = match.group(1)
+        url = match.group(2)
+        local_name = url_map.get(url)
+        if local_name:
+            return f'![{alt}]({local_name})'
+        return match.group(0)
 
     def replace_html_src(match):
         url = match.group(1)
         full_tag = match.group(0)
-
-        if url.startswith("http://") or url.startswith("https://"):
-            try:
-                ext = Path(url).suffix or ".png"
-                if "?" in ext: ext = ext.split("?")[0]
-                local_filename = f"remote_{_hash_url(url)}{ext}"
-                local_path = temp_dir / local_filename
-
-                if not local_path.exists():
-                    req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
-                    with urllib.request.urlopen(req, timeout=15) as response, open(local_path, 'wb') as out_file:
-                        shutil.copyfileobj(response, out_file)
-
-                return full_tag.replace(url, local_path.name)
-            except:
-                return full_tag
-        else:
-            try:
-                src_path = Path(url).resolve()
-                if src_path.exists():
-                    dest_path = temp_dir / src_path.name
-                    if not dest_path.exists():
-                        shutil.copy2(src_path, dest_path)
-                    return full_tag.replace(url, dest_path.name)
-                return full_tag
-            except:
-                return full_tag
+        local_name = url_map.get(url)
+        if local_name:
+            return full_tag.replace(url, local_name)
+        return full_tag
 
     new_text = MD_IMG_PATTERN.sub(replace_link, md_text)
     new_text = HTML_IMG_PATTERN.sub(replace_html_src, new_text)
@@ -276,7 +272,44 @@ def is_pure_mermaid(text: str) -> bool:
 
 # --- Core Conversion Logic (Decoupled from TUI) ---
 # --- Core Conversion Logic (Decoupled from TUI) ---
+def sanitize_mermaid_code(code: str) -> str:
+    """
+    Sanitizes mermaid code to prevent "Unsupported markdown" errors in nodes.
+    Specifically handles list markers (-, *, 1.) inside quoted strings.
+    """
+    def replacer_combined(match):
+        if match.group(1) is not None:
+            content = match.group(1)
+            quote = '"'
+        else:
+            content = match.group(2)
+            quote = "'"
+
+        # Regex to find list markers at start of string or after newline
+        # group 1: start or newline
+        # group 2: whitespace
+        # group 3: - or *
+        # group 4: digit+.
+        pattern = r"(^|\n)(\s*)(?:([-*])|(\d+\.))\s+"
+
+        def insert_space(m):
+            prefix = m.group(1) + m.group(2)
+            marker = m.group(3) if m.group(3) else m.group(4)
+            # Insert zero-width space to break the list marker pattern
+            return f"{prefix}{marker}&#8203; "
+
+        new_content = re.sub(pattern, insert_space, content)
+        return f"{quote}{new_content}{quote}"
+
+    # Pattern for double quoted strings or single quoted strings
+    # Group 1: Double quoted content
+    # Group 2: Single quoted content
+    # We use concatenation to avoid quote escaping issues in regex string
+    regex_pattern = r'"((?:[^"\\]|\\.)*)"' + r"|'((?:[^'\\]|\\.)*)'"
+    return re.sub(regex_pattern, replacer_combined, code, flags=re.DOTALL)
+
 _MD_PARSER = None
+_PANDOC_AVAILABLE = None
 
 def _get_md_parser():
     global _MD_PARSER
@@ -287,7 +320,8 @@ def _get_md_parser():
             t = tokens[idx]
             m_enabled = env.get("mermaid_enabled", True) if env else True
             if t.info.strip() == "mermaid" and m_enabled:
-                return f'<div class="m-wrap"><div class="mermaid">{t.content}</div></div>'
+                content = sanitize_mermaid_code(t.content)
+                return f'<div class="m-wrap"><div class="mermaid">{content}</div></div>'
             return f"<pre><code>{t.content}</code></pre>"
 
         _MD_PARSER.renderer.rules["fence"] = mf
@@ -371,7 +405,8 @@ async def generate_pdf_core(md_path: Path, pdf_path: Path, settings: dict, log_f
         v_w = 800 if a4_width else 1200
         page = await browser.new_page(viewport={"width": v_w, "height": 1000})
         abs_url = f"file:///{str(tmp_h.resolve()).replace(os.sep, '/')}"
-        await page.goto(abs_url, wait_until="networkidle")
+        # using 'load' instead of 'networkidle' saves ~500ms per PDF
+        await page.goto(abs_url, wait_until="load")
         
         # Smart wait for diagrams
         mermaid_count = await page.locator(".mermaid").count()
@@ -443,7 +478,8 @@ async def render_png_page(browser, md_path: Path, png_path: Path, settings: dict
 
     abs_url = f"file:///{str(tmp_h.resolve()).replace(os.sep, '/')}"
     if log_fn: log_fn(f"Loading: {abs_url}")
-    await page.goto(abs_url, wait_until="networkidle")
+    # using 'load' instead of 'networkidle' saves ~500ms
+    await page.goto(abs_url, wait_until="load")
 
     # Wait for mermaid to finish rendering
     try:
@@ -530,12 +566,18 @@ async def generate_docx_core(md_path: Path, docx_path: Path, log_fn=print, prog_
     if prog_fn: prog_fn(10)
     
     # Check for pandoc
-    try:
-        proc = await asyncio.create_subprocess_exec("pandoc", "--version", stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.DEVNULL)
-        await proc.wait()
-        if proc.returncode != 0:
-            raise subprocess.CalledProcessError(proc.returncode, ["pandoc", "--version"])
-    except FileNotFoundError:
+    global _PANDOC_AVAILABLE
+    if _PANDOC_AVAILABLE is None:
+        try:
+            proc = await asyncio.create_subprocess_exec("pandoc", "--version", stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.DEVNULL)
+            await proc.wait()
+            if proc.returncode != 0:
+                raise subprocess.CalledProcessError(proc.returncode, ["pandoc", "--version"])
+            _PANDOC_AVAILABLE = True
+        except FileNotFoundError:
+            _PANDOC_AVAILABLE = False
+
+    if _PANDOC_AVAILABLE is False:
         raise RuntimeError("Pandoc not found. Please install pandoc to export to DOCX.")
     
     # Determine Theme Colors for Alerts
@@ -576,7 +618,7 @@ async def generate_docx_core(md_path: Path, docx_path: Path, log_fn=print, prog_
     in_alert = False
     alert_type = None
     alert_content = []
-    
+
     for line in lines:
         # Check for alert header with flexible whitespace
         # matches: > [!NOTE],   > [!NOTE], >[!NOTE]
@@ -626,7 +668,6 @@ async def generate_docx_core(md_path: Path, docx_path: Path, log_fn=print, prog_
         
     md_text = "\n".join(processed_lines)
     
-    # Update regex since we modified md_text
     mermaid_blocks = list(MERMAID_PATTERN.finditer(md_text))
     
     temp_images = []
@@ -651,15 +692,21 @@ async def generate_docx_core(md_path: Path, docx_path: Path, log_fn=print, prog_
             browser = await p.chromium.launch()
             page = await browser.new_page(device_scale_factor=2) # Higher DPI for docs
             abs_url = f"file:///{str(tmp_h.resolve()).replace(os.sep, '/')}"
-            await page.goto(abs_url, wait_until="networkidle")
+            await page.goto(abs_url, wait_until="load")
             
-            # Wait specifically for mermaid to render
+            # Smart wait for diagrams
             try:
-                await page.wait_for_selector(".mermaid svg", timeout=10000)
-                # Extra safety buffer for animations/layout
-                await page.wait_for_timeout(1500)
-            except:
-                if log_fn: log_fn("Warning: Timeout waiting for diagrams")
+                await page.wait_for_function("""
+                    () => {
+                        const all = document.querySelectorAll('.mermaid');
+                        const processed = document.querySelectorAll('.mermaid[data-processed="true"]');
+                        const error = document.querySelectorAll('.mermaid-error');
+                        return (processed.length + error.length) === all.length;
+                    }
+                """, timeout=10000)
+                await page.wait_for_timeout(500) # Buffer for layout
+            except Exception as e:
+                if log_fn: log_fn(f"Warning: Timeout waiting for diagrams: {e}")
 
             elements = await page.locator(".mermaid").all()
             
@@ -753,7 +800,13 @@ if HAS_TEXTUAL:
         .tool-btn { min-width: 5; margin-right: 1; height: 1; background: #30363d; border: none; }
         .tool-btn:hover { background: #58a6ff; color: #161b22; }
         """
-        BINDINGS = [Binding("ctrl+o", "browse_file"), Binding("ctrl+r", "convert"), Binding("ctrl+d", "convert_docx"), Binding("ctrl+p", "open_pdf"), Binding("f1", "show_help")]
+        BINDINGS = [
+            Binding("ctrl+o", "browse_file", "Browse"),
+            Binding("ctrl+r", "convert", "PDF"),
+            Binding("ctrl+d", "convert_docx", "DOCX"),
+            Binding("ctrl+p", "open_pdf", "Open PDF"),
+            Binding("f1", "show_help", "Help")
+        ]
 
         def __init__(self, cli_file=None, paste_content=None):
             super().__init__(); self.cli_file = cli_file; self.paste_content = paste_content; self.settings = load_settings(); self.recent_files = load_recent_files(); self.last_output_path = None; self.use_paste_source = bool(paste_content)
@@ -776,12 +829,38 @@ if HAS_TEXTUAL:
 
                 path = Path(filepath).resolve()
                 if path.exists() and path.is_file():
-                    content = path.read_text(encoding="utf-8")
+                    # Optimized reading: only read first 20k chars to prevent UI freeze on large files
+                    with open(path, "r", encoding="utf-8") as f:
+                        content = f.read(20001)
                     if len(content) > 20000:
                         content = content[:20000] + "\n\n...(Preview truncated)..."
                     self.query_one("#md-preview", Markdown).update(content)
+                elif not filepath or not filepath.strip():
+                    welcome_msg = """
+# 👋 Welcome to MDPDFM Pro!
+
+No file is currently selected.
+
+**To get started:**
+1. Enter a file path in the **Input** field above.
+2. Or click **Browse** to select a file.
+3. Or switch to the **Paste & Preview** tab to type Markdown directly.
+
+**Pro Tip:** Press `Ctrl+O` to quickly browse for files.
+"""
+                    self.query_one("#md-preview", Markdown).update(welcome_msg)
                 else:
-                    self.query_one("#md-preview", Markdown).update("")
+                    error_msg = f"""
+# ⚠️ File Not Found
+
+The file `{filepath}` could not be found.
+
+**Suggestions:**
+- Check the file path for typos.
+- Ensure the file exists on your system.
+- Use the **Browse** button to locate the file safely.
+"""
+                    self.query_one("#md-preview", Markdown).update(error_msg)
             except Exception:
                 pass # Fail silently or log
 
@@ -814,14 +893,14 @@ if HAS_TEXTUAL:
                         yield ProgressBar(id="progress-bar", show_eta=False); yield RichLog(id="log", markup=True)
                 with TabPane("Paste & Preview"):
                     with Horizontal(id="editor-toolbar", classes="toolbar"):
-                        yield Button("B", id="btn-bold", classes="tool-btn")
-                        yield Button("I", id="btn-italic", classes="tool-btn")
-                        yield Button("Code", id="btn-code", classes="tool-btn")
-                        yield Button("List", id="btn-list", classes="tool-btn")
-                        yield Button("Link", id="btn-link", classes="tool-btn")
-                        yield Button("H1", id="btn-h1", classes="tool-btn")
-                        yield Button("H2", id="btn-h2", classes="tool-btn")
-                        yield Button("H3", id="btn-h3", classes="tool-btn")
+                        yield Button("Bold", id="btn-bold", classes="tool-btn", tooltip="Bold (**text**)")
+                        yield Button("Italic", id="btn-italic", classes="tool-btn", tooltip="Italic (*text*)")
+                        yield Button("Code", id="btn-code", classes="tool-btn", tooltip="Code (`text`)")
+                        yield Button("List", id="btn-list", classes="tool-btn", tooltip="List (- item)")
+                        yield Button("Link", id="btn-link", classes="tool-btn", tooltip="Link ([text](url))")
+                        yield Button("H1", id="btn-h1", classes="tool-btn", tooltip="Heading 1 (# text)")
+                        yield Button("H2", id="btn-h2", classes="tool-btn", tooltip="Heading 2 (## text)")
+                        yield Button("H3", id="btn-h3", classes="tool-btn", tooltip="Heading 3 (### text)")
 
                     with Horizontal(id="preview-controls"):
                          yield Button("👁️ TUI Preview", id="toggle-view-btn", disabled=True, variant="primary")
@@ -836,11 +915,15 @@ if HAS_TEXTUAL:
                 yield Button("📄 Open File", id="open-btn", disabled=True)
                 yield Button("📝 Export DOCX", id="docx-btn")
                 yield Button("▶ GENERATE PDF", id="convert-btn")
+            yield Footer()
 
         def on_mount(self):
             if self.cli_file:
                 self.query_one("#md-input", Input).value = str(Path(self.cli_file).resolve())
                 self.update_file_preview(self.cli_file)
+            else:
+                self.update_file_preview("")
+
             if self.paste_content:
                 self.query_one("#paste-area", TextArea).text = self.paste_content
                 self.query_one("#source-switch", Switch).value = True
@@ -1050,7 +1133,7 @@ if HAS_TEXTUAL:
                      async with async_playwright() as p:
                         browser = await p.chromium.launch()
                         page = await browser.new_page(device_scale_factor=2)
-                        await page.goto(f"file://{tmp_h.resolve()}", wait_until="networkidle")
+                        await page.goto(f"file://{tmp_h.resolve()}", wait_until="load")
 
                         try:
                             await page.wait_for_selector(".mermaid svg", timeout=5000)
