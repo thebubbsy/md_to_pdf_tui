@@ -884,23 +884,23 @@ The file `{filepath}` could not be found.
                         with Container(classes="section"):
                             yield Static("📁 FILES")
                             with Horizontal(classes="row"):
-                                yield Label("Input:"); yield Input(id="md-input", placeholder="Select file or enter path..."); yield Button("Browse", id="browse-btn")
+                                yield Label("Input:"); yield Input(id="md-input", placeholder="Select file or enter path..."); yield Button("Browse", id="browse-btn", tooltip="Select a Markdown file to convert")
                             with Horizontal(classes="row"):
-                                yield Label("Output Folder:"); yield Input(value=self.settings.get("output_folder", ""), id="out-input", placeholder="Leave empty to save alongside input file"); yield Button("Browse", id="browse-out-btn")
+                                yield Label("Output Folder:"); yield Input(value=self.settings.get("output_folder", ""), id="out-input", placeholder="Leave empty to save alongside input file"); yield Button("Browse", id="browse-out-btn", tooltip="Select destination folder for generated files")
                             with Horizontal(classes="row"):
-                                yield Label("Use Paste:"); yield Switch(value=False, id="source-switch")
+                                yield Label("Use Paste:"); yield Switch(value=False, id="source-switch", tooltip="Toggle between file input and text editor")
                         with Container(classes="section"):
                             yield Static("🎨 AESTHETICS")
                             with Horizontal(classes="row"):
-                                yield Label("Theme:"); yield Select.from_values(list(THEMES.keys()), allow_blank=False, value=self.settings.get("theme", "GitHub Light"), id="theme-select")
+                                yield Label("Theme:"); yield Select.from_values(list(THEMES.keys()), allow_blank=False, value=self.settings.get("theme", "GitHub Light"), id="theme-select", tooltip="Select color theme for PDF/DOCX output")
                         with Container(classes="section"):
                             yield Static("⚙️ OPTIONS")
                             with Horizontal(classes="row"):
-                                yield Label("A4 Lock:"); yield Switch(value=self.settings.get("a4_fixed_width", True), id="a4-width-switch")
+                                yield Label("A4 Lock:"); yield Switch(value=self.settings.get("a4_fixed_width", True), id="a4-width-switch", tooltip="Constrain content width to A4 paper size (800px)")
                             with Horizontal(classes="row"):
-                                yield Label("Single Pg:"); yield Switch(value=self.settings.get("unlimited_height", True), id="unlimited-height-switch")
+                                yield Label("Single Pg:"); yield Switch(value=self.settings.get("unlimited_height", True), id="unlimited-height-switch", tooltip="Generate a continuous PDF without page breaks")
                             with Horizontal(classes="row"):
-                                yield Label("Save Diags:"); yield Switch(value=self.settings.get("save_diagrams", False), id="save-diags-switch")
+                                yield Label("Save Diags:"); yield Switch(value=self.settings.get("save_diagrams", False), id="save-diags-switch", tooltip="Save extracted Mermaid diagrams as separate PNG files")
                     with Vertical(id="log-area"):
                         yield ProgressBar(id="progress-bar", show_eta=False); yield RichLog(id="log", markup=True)
                 with TabPane("Paste & Preview"):
@@ -924,9 +924,9 @@ The file `{filepath}` could not be found.
                             yield Markdown(id="md-preview")
                         yield TextArea(id="paste-area")
             with Horizontal(id="button-bar"): 
-                yield Button("📄 Open File", id="open-btn", disabled=True)
-                yield Button("📝 Export DOCX", id="docx-btn")
-                yield Button("▶ GENERATE PDF", id="convert-btn")
+                yield Button("📄 Open File", id="open-btn", disabled=True, tooltip="Open the last generated PDF/DOCX file")
+                yield Button("📝 Export DOCX", id="docx-btn", tooltip="Convert the current Markdown to a Word document")
+                yield Button("▶ GENERATE PDF", id="convert-btn", tooltip="Convert the current Markdown to a PDF file")
             yield Footer()
 
         def on_mount(self):
