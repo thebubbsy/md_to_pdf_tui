@@ -17,3 +17,7 @@
 ## 2024-05-24 - The Silent Footer
 **Learning:** Textual `BINDINGS` without explicit descriptions default to raw action names in the `Footer`, confusing users with internal terminology.
 **Action:** Always provide the 3rd argument (description) in `Binding` definitions to ensure user-friendly labels.
+
+## 2025-02-17 - The Silent Success
+**Learning:** Background operations (like file conversion) often succeed or fail silently, forcing users to check logs. Immediate toast notifications provide essential feedback and delight.
+**Action:** Use `self.notify` for all long-running task completions to keep users informed without context switching.

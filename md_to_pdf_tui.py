@@ -1068,7 +1068,19 @@ The file `{filepath}` could not be found.
             self.push_screen(HelpScreen())
 
         def action_open_pdf(self):
-            if self.last_output_path and self.last_output_path.exists(): os.startfile(str(self.last_output_path))
+            if self.last_output_path and self.last_output_path.exists():
+                try:
+                    if hasattr(os, 'startfile'):
+                        os.startfile(str(self.last_output_path))
+                    else:
+                        # Linux/Mac
+                        opener = "open" if sys.platform == "darwin" else "xdg-open"
+                        subprocess.call([opener, str(self.last_output_path)])
+                    self.notify(f"Opening {self.last_output_path.name}", title="Opening File")
+                except Exception as e:
+                    self.notify(f"Failed to open file: {e}", title="Error", severity="error")
+            else:
+                self.notify("No file generated yet or file not found.", title="Open Error", severity="error")
 
         def action_browser_preview(self):
             content = ""
@@ -1097,8 +1109,10 @@ The file `{filepath}` could not be found.
                 preview_path.write_text(html, encoding="utf-8")
                 webbrowser.open(f"file://{preview_path.resolve()}")
                 self.call_from_thread(lambda: self.query_one("#log", RichLog).write("[green]Browser preview opened.[/]"))
+                self.call_from_thread(lambda: self.notify("Browser preview launched", title="Preview", severity="information"))
              except Exception as e:
                 self.call_from_thread(lambda: self.query_one("#log", RichLog).write(f"[red]Preview Error: {e}[/]"))
+                self.call_from_thread(lambda: self.notify(f"Preview Error: {e}", title="Error", severity="error"))
 
         def action_render_tui(self):
             content = ""
@@ -1213,11 +1227,13 @@ The file `{filepath}` could not be found.
                                 container.mount(Static("[red]Image missing[/]"))
 
                     self.query_one("#log", RichLog).write("[green]TUI Render Complete![/]")
+                    self.notify("TUI Render Complete", title="Success", severity="information")
 
                 self.call_from_thread(update_ui)
 
              except Exception as e:
                 self.call_from_thread(lambda: self.query_one("#log", RichLog).write(f"[red]TUI Render Error: {e}[/]"))
+                self.call_from_thread(lambda: self.notify(f"TUI Render Error: {e}", title="Error", severity="error"))
 
         @work(exclusive=True, thread=True)
         def run_conversion(self, fmt="pdf") -> None:
@@ -1265,6 +1281,7 @@ The file `{filepath}` could not be found.
                             asyncio.set_event_loop(loop)
                             loop.run_until_complete(generate_docx_core(ipath, opath, log, prog, settings=self.settings))
                             log(f"[green]✓ DOCX Export Done: {str(opath)}[/]")
+                            self.call_from_thread(lambda: self.notify(f"DOCX Export Successful: {opath.name}", title="Success", severity="information"))
                         else:
                             loop = asyncio.new_event_loop()
                             asyncio.set_event_loop(loop)
@@ -1277,6 +1294,7 @@ The file `{filepath}` could not be found.
 
                             loop.run_until_complete(generate_pdf_core(ipath, opath, self.settings, log, prog))
                             log(f"[green]✓ PDF Export Done: {str(opath)}[/]")
+                            self.call_from_thread(lambda: self.notify(f"PDF Export Successful: {opath.name}", title="Success", severity="information"))
 
                         self.last_output_path = opath
                         self.call_from_thread(enable_btn)
@@ -1304,15 +1322,19 @@ The file `{filepath}` could not be found.
                         # Pass self.settings to ensure theme is used
                         loop.run_until_complete(generate_docx_core(ipath, opath, log, prog, settings=self.settings))
                         log(f"[green]✓ DOCX Export Done: {str(opath)}[/]")
+                        self.call_from_thread(lambda: self.notify(f"DOCX Export Successful: {opath.name}", title="Success", severity="information"))
                     else:
                         loop = asyncio.new_event_loop()
                         asyncio.set_event_loop(loop)
                         loop.run_until_complete(generate_pdf_core(ipath, opath, self.settings, log, prog))
                         log(f"[green]✓ PDF Export Done: {str(opath)}[/]")
+                        self.call_from_thread(lambda: self.notify(f"PDF Export Successful: {opath.name}", title="Success", severity="information"))
 
                     self.last_output_path = opath
                     self.call_from_thread(enable_btn)
-            except Exception as e: log(f"[red]Error: {e}[/]")
+            except Exception as e:
+                log(f"[red]Error: {e}[/]")
+                self.call_from_thread(lambda: self.notify(f"Export Failed: {e}", title="Error", severity="error"))
 
 async def run_gallery_mode(md_path: Path) -> None:
     print("--- Gallery Mode: Generating for all themes ---")
