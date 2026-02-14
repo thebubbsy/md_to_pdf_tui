@@ -441,10 +441,17 @@ async def generate_pdf_core(md_path: Path, pdf_path: Path, settings: dict, log_f
                 if log_fn: log_fn(f"Saving {len(elements)} diagrams to separate files...")
                 out_dir = pdf_path.parent
                 stem = pdf_path.stem
+
+                async def save_diag(el, path):
+                     await el.screenshot(path=str(path))
+                     if log_fn: log_fn(f"Saved diagram: {path}")
+
+                tasks = []
                 for i, element in enumerate(elements):
                     d_path = out_dir / f"{stem}_diagram_{i+1}.png"
-                    await element.screenshot(path=str(d_path))
-                    if log_fn: log_fn(f"Saved diagram: {d_path}")
+                    tasks.append(save_diag(element, d_path))
+
+                await asyncio.gather(*tasks)
 
         opts = {"path": str(pdf_path.resolve()), "print_background": True}
         if u_height:
@@ -725,9 +732,18 @@ async def generate_docx_core(md_path: Path, docx_path: Path, log_fn=print, prog_
             if len(elements) != len(mermaid_blocks):
                  if log_fn: log_fn(f"Warning: Block count ({len(mermaid_blocks)}) != Element count ({len(elements)})")
             
-            for i, (block, element) in enumerate(zip(mermaid_blocks, elements)):
+            screenshot_tasks = []
+            img_paths = []
+
+            for i, element in enumerate(elements):
                  img_path = md_path.parent / f"diagram_{uuid.uuid4()}.png"
-                 await element.screenshot(path=str(img_path))
+                 img_paths.append(img_path)
+                 screenshot_tasks.append(element.screenshot(path=str(img_path)))
+
+            # Parallel capture
+            await asyncio.gather(*screenshot_tasks)
+
+            for i, img_path in enumerate(img_paths):
                  temp_images.append(img_path)
                  temp_files_to_cleanup.append(img_path)
 
@@ -1158,16 +1174,33 @@ The file `{filepath}` could not be found.
                         page = await browser.new_page(device_scale_factor=2)
                         await page.goto(f"file://{tmp_h.resolve()}", wait_until="load")
 
+                        # Smart wait for diagrams
                         try:
-                            await page.wait_for_selector(".mermaid svg", timeout=5000)
-                            await page.wait_for_timeout(500)
-                        except: pass
+                            await page.wait_for_function("""
+                                () => {
+                                    const all = document.querySelectorAll('.mermaid');
+                                    const processed = document.querySelectorAll('.mermaid[data-processed="true"]');
+                                    const error = document.querySelectorAll('.mermaid-error');
+                                    return (processed.length + error.length) === all.length;
+                                }
+                            """, timeout=10000)
+                            await page.wait_for_timeout(500) # Buffer for layout
+                        except Exception:
+                            pass
 
                         elements = await page.locator(".mermaid").all()
+
+                        screenshot_tasks = []
+                        current_images = []
+
                         for i, el in enumerate(elements):
                             p = temp_dir / f"diag_{i}.png"
-                            await el.screenshot(path=str(p))
-                            images.append(p)
+                            current_images.append(p)
+                            screenshot_tasks.append(el.screenshot(path=str(p)))
+
+                        await asyncio.gather(*screenshot_tasks)
+                        images.extend(current_images)
+
                         await browser.close()
 
                 loop = asyncio.new_event_loop()
