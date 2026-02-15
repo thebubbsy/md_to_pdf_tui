@@ -792,7 +792,7 @@ if HAS_TEXTUAL:
     class HelpScreen(ModalScreen):
         BINDINGS = [Binding("escape", "dismiss", "Close"), Binding("f1", "dismiss", "Close")]
         def compose(self) -> ComposeResult:
-            yield Container(Static("[b]⌨️ Keyboard Shortcuts[/b]\n"), Static("[cyan]Ctrl+O[/] Browse\n[cyan]Ctrl+R[/] Convert\n[cyan]Ctrl+P[/] Open PDF\n[cyan]F1[/] Help"), Rule(), id="help-dialog")
+            yield Container(Static("[b]⌨️ Keyboard Shortcuts[/b]\n"), Static("[cyan]Ctrl+O[/] Browse\n[cyan]Ctrl+R[/] Convert PDF\n[cyan]Ctrl+D[/] Convert DOCX\n[cyan]Ctrl+P[/] Open PDF\n[cyan]F1[/] Help"), Rule(), id="help-dialog")
         CSS = "#help-dialog { width: 50; padding: 2; background: #1a1a1a; border: round #555; }"
 
     class MarkdownToPdfApp(App):
@@ -1226,6 +1226,24 @@ The file `{filepath}` could not be found.
             def prog(v): self.call_from_thread(lambda: self.query_one("#progress-bar", ProgressBar).update(progress=v))
             def enable_btn(): self.query_one("#open-btn", Button).disabled = False
 
+            # UX: Toggle busy state on buttons
+            def set_busy(busy: bool):
+                def _update():
+                    try:
+                        c_btn = self.query_one("#convert-btn", Button)
+                        d_btn = self.query_one("#docx-btn", Button)
+                        c_btn.disabled = busy
+                        d_btn.disabled = busy
+                        if busy:
+                            c_btn.label = "⌛ Working..."
+                            d_btn.label = "⌛ Working..."
+                        else:
+                            c_btn.label = "▶ GENERATE PDF"
+                            d_btn.label = "📝 Export DOCX"
+                    except Exception: pass
+                self.call_from_thread(_update)
+
+            set_busy(True)
             try:
                 if self.use_paste_source:
                     text_content = self.query_one("#paste-area", TextArea).text
@@ -1313,6 +1331,8 @@ The file `{filepath}` could not be found.
                     self.last_output_path = opath
                     self.call_from_thread(enable_btn)
             except Exception as e: log(f"[red]Error: {e}[/]")
+            finally:
+                set_busy(False)
 
 async def run_gallery_mode(md_path: Path) -> None:
     print("--- Gallery Mode: Generating for all themes ---")
