@@ -53,6 +53,7 @@ from mdit_py_plugins.footnote import footnote_plugin
 
 # --- Constants ---
 CONFIG_DIR = Path.home() / ".md_to_pdf"
+CACHE_DIR = CONFIG_DIR / "cache"
 RECENT_FILES_PATH = CONFIG_DIR / "recent_files.json"
 SETTINGS_PATH = CONFIG_DIR / "settings.json"
 MAX_RECENT_FILES = 10
@@ -186,9 +187,12 @@ MERMAID_PATTERN = re.compile(r"^(?:`{3,}|~{3,})mermaid\s*\n(.*?)\n(?:`{3,}|~{3,}
 def process_resources(md_text: str, temp_dir: Path) -> str:
     """
     Scans markdown text for images and resources.
-    Downloads remote images to temp_dir.
+    Downloads remote images to CACHE_DIR (persistent cache).
     Updates markdown references to point to absolute paths for local files.
     """
+    # Ensure cache directory exists
+    CACHE_DIR.mkdir(parents=True, exist_ok=True)
+
     def _hash_url(url: str) -> str:
         return hashlib.md5(url.encode()).hexdigest()
 
@@ -200,13 +204,23 @@ def process_resources(md_text: str, temp_dir: Path) -> str:
                 ext = Path(url).suffix or ".png"
                 if "?" in ext: ext = ext.split("?")[0]
                 local_filename = f"remote_{_hash_url(url)}{ext}"
-                local_path = temp_dir / local_filename
+                local_path = CACHE_DIR / local_filename
 
                 if not local_path.exists():
-                    req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
-                    with urllib.request.urlopen(req, timeout=15) as response, open(local_path, 'wb') as out_file:
-                        shutil.copyfileobj(response, out_file)
-                return url, local_filename
+                    # Atomic download to avoid partial files
+                    temp_download_path = local_path.with_suffix(f"{local_path.suffix}.tmp.{uuid.uuid4()}")
+                    try:
+                        req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+                        with urllib.request.urlopen(req, timeout=15) as response, open(temp_download_path, 'wb') as out_file:
+                            shutil.copyfileobj(response, out_file)
+                        temp_download_path.replace(local_path)
+                    except Exception:
+                        if temp_download_path.exists():
+                            try: temp_download_path.unlink()
+                            except: pass
+                        raise
+
+                return url, local_path.as_posix()
             except Exception:
                 return url, None
         else:
