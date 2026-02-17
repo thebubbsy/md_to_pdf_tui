@@ -1226,6 +1226,22 @@ The file `{filepath}` could not be found.
             def prog(v): self.call_from_thread(lambda: self.query_one("#progress-bar", ProgressBar).update(progress=v))
             def enable_btn(): self.query_one("#open-btn", Button).disabled = False
 
+            # UX: Toggle busy state
+            def set_busy(busy: bool):
+                try:
+                    self.query_one("#convert-btn", Button).disabled = busy
+                    self.query_one("#docx-btn", Button).disabled = busy
+                    if busy:
+                        target = "#docx-btn" if fmt == "docx" else "#convert-btn"
+                        self.query_one(target, Button).label = "⏳ Converting..."
+                    else:
+                        self.query_one("#convert-btn", Button).label = "▶ GENERATE PDF"
+                        self.query_one("#docx-btn", Button).label = "📝 Export DOCX"
+                except Exception:
+                    pass
+
+            self.call_from_thread(set_busy, True)
+
             try:
                 if self.use_paste_source:
                     text_content = self.query_one("#paste-area", TextArea).text
@@ -1313,6 +1329,8 @@ The file `{filepath}` could not be found.
                     self.last_output_path = opath
                     self.call_from_thread(enable_btn)
             except Exception as e: log(f"[red]Error: {e}[/]")
+            finally:
+                self.call_from_thread(set_busy, False)
 
 async def run_gallery_mode(md_path: Path) -> None:
     print("--- Gallery Mode: Generating for all themes ---")
