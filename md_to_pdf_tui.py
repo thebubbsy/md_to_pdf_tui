@@ -279,41 +279,34 @@ def is_pure_mermaid(text: str) -> bool:
 
 # --- Core Conversion Logic (Decoupled from TUI) ---
 # --- Core Conversion Logic (Decoupled from TUI) ---
+
+# Optimization: Pre-compile regex patterns for mermaid sanitization
+_MERMAID_STRING_PATTERN = re.compile(r'"((?:[^"\\]|\\.)*)"' + r"|'((?:[^'\\]|\\.)*)'", re.DOTALL)
+_MERMAID_LIST_MARKER_PATTERN = re.compile(r"(^|\n)(\s*)(?:([-*])|(\d+\.))\s+")
+
+def _mermaid_list_marker_replacer(m):
+    prefix = m.group(1) + m.group(2)
+    marker = m.group(3) if m.group(3) else m.group(4)
+    # Insert zero-width space to break the list marker pattern
+    return f"{prefix}{marker}&#8203; "
+
+def _mermaid_string_replacer(match):
+    if match.group(1) is not None:
+        content = match.group(1)
+        quote = '"'
+    else:
+        content = match.group(2)
+        quote = "'"
+
+    new_content = _MERMAID_LIST_MARKER_PATTERN.sub(_mermaid_list_marker_replacer, content)
+    return f"{quote}{new_content}{quote}"
+
 def sanitize_mermaid_code(code: str) -> str:
     """
     Sanitizes mermaid code to prevent "Unsupported markdown" errors in nodes.
     Specifically handles list markers (-, *, 1.) inside quoted strings.
     """
-    def replacer_combined(match):
-        if match.group(1) is not None:
-            content = match.group(1)
-            quote = '"'
-        else:
-            content = match.group(2)
-            quote = "'"
-
-        # Regex to find list markers at start of string or after newline
-        # group 1: start or newline
-        # group 2: whitespace
-        # group 3: - or *
-        # group 4: digit+.
-        pattern = r"(^|\n)(\s*)(?:([-*])|(\d+\.))\s+"
-
-        def insert_space(m):
-            prefix = m.group(1) + m.group(2)
-            marker = m.group(3) if m.group(3) else m.group(4)
-            # Insert zero-width space to break the list marker pattern
-            return f"{prefix}{marker}&#8203; "
-
-        new_content = re.sub(pattern, insert_space, content)
-        return f"{quote}{new_content}{quote}"
-
-    # Pattern for double quoted strings or single quoted strings
-    # Group 1: Double quoted content
-    # Group 2: Single quoted content
-    # We use concatenation to avoid quote escaping issues in regex string
-    regex_pattern = r'"((?:[^"\\]|\\.)*)"' + r"|'((?:[^'\\]|\\.)*)'"
-    return re.sub(regex_pattern, replacer_combined, code, flags=re.DOTALL)
+    return _MERMAID_STRING_PATTERN.sub(_mermaid_string_replacer, code)
 
 _MD_PARSER = None
 _PANDOC_AVAILABLE = None
