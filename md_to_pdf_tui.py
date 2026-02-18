@@ -538,7 +538,7 @@ async def render_png_page(browser, md_path: Path, png_path: Path, settings: dict
                 except: pass
             sys.exit(1)
 
-        await page.wait_for_timeout(2000) # Final stabilization
+        await page.wait_for_timeout(500) # Final stabilization (reduced from 2000ms for speed)
     except Exception as e:
         if log_fn: log_fn(f"Timeout or Error: {e}")
         # Check if it was a timeout but maybe it still rendered
