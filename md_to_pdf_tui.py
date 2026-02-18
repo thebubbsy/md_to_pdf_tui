@@ -1068,7 +1068,22 @@ The file `{filepath}` could not be found.
             self.push_screen(HelpScreen())
 
         def action_open_pdf(self):
-            if self.last_output_path and self.last_output_path.exists(): os.startfile(str(self.last_output_path))
+            if not self.last_output_path or not self.last_output_path.exists():
+                self.notify("No file generated yet.", title="File System", severity="error")
+                return
+
+            path_str = str(self.last_output_path.resolve())
+            self.notify(f"Opening {self.last_output_path.name}...", title="File System")
+
+            try:
+                if sys.platform == "win32":
+                    os.startfile(path_str)
+                elif sys.platform == "darwin":
+                    subprocess.run(["open", path_str], check=True)
+                else:
+                    subprocess.run(["xdg-open", path_str], check=True)
+            except Exception as e:
+                self.notify(f"Could not open file: {e}", title="Error", severity="error")
 
         def action_browser_preview(self):
             content = ""
