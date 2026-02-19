@@ -1067,8 +1067,24 @@ The file `{filepath}` could not be found.
         def action_show_help(self):
             self.push_screen(HelpScreen())
 
+        def _open_file_cross_platform(self, filepath: Path):
+            try:
+                if sys.platform == "win32":
+                    os.startfile(str(filepath))
+                elif sys.platform == "darwin":
+                    subprocess.Popen(["open", str(filepath)])
+                else:
+                    subprocess.Popen(["xdg-open", str(filepath)])
+            except Exception as e:
+                self.notify(f"Error opening file: {e}", severity="error")
+                self.query_one("#log", RichLog).write(f"[red]Error opening file: {e}[/]")
+
         def action_open_pdf(self):
-            if self.last_output_path and self.last_output_path.exists(): os.startfile(str(self.last_output_path))
+            if self.last_output_path and self.last_output_path.exists():
+                self.notify(f"Opening {self.last_output_path.name}...", title="Opening File")
+                self._open_file_cross_platform(self.last_output_path)
+            else:
+                self.notify("No output file generated yet.", severity="warning", title="Cannot Open")
 
         def action_browser_preview(self):
             content = ""
@@ -1097,8 +1113,10 @@ The file `{filepath}` could not be found.
                 preview_path.write_text(html, encoding="utf-8")
                 webbrowser.open(f"file://{preview_path.resolve()}")
                 self.call_from_thread(lambda: self.query_one("#log", RichLog).write("[green]Browser preview opened.[/]"))
+                self.call_from_thread(lambda: self.notify("Browser preview opened.", title="Success"))
              except Exception as e:
                 self.call_from_thread(lambda: self.query_one("#log", RichLog).write(f"[red]Preview Error: {e}[/]"))
+                self.call_from_thread(lambda: self.notify(f"Preview Error: {e}", severity="error"))
 
         def action_render_tui(self):
             content = ""
@@ -1265,6 +1283,7 @@ The file `{filepath}` could not be found.
                             asyncio.set_event_loop(loop)
                             loop.run_until_complete(generate_docx_core(ipath, opath, log, prog, settings=self.settings))
                             log(f"[green]✓ DOCX Export Done: {str(opath)}[/]")
+                            self.call_from_thread(lambda: self.notify(f"DOCX Saved: {opath.name}", title="Export Complete"))
                         else:
                             loop = asyncio.new_event_loop()
                             asyncio.set_event_loop(loop)
@@ -1277,6 +1296,7 @@ The file `{filepath}` could not be found.
 
                             loop.run_until_complete(generate_pdf_core(ipath, opath, self.settings, log, prog))
                             log(f"[green]✓ PDF Export Done: {str(opath)}[/]")
+                            self.call_from_thread(lambda: self.notify(f"PDF Saved: {opath.name}", title="Export Complete"))
 
                         self.last_output_path = opath
                         self.call_from_thread(enable_btn)
@@ -1304,11 +1324,13 @@ The file `{filepath}` could not be found.
                         # Pass self.settings to ensure theme is used
                         loop.run_until_complete(generate_docx_core(ipath, opath, log, prog, settings=self.settings))
                         log(f"[green]✓ DOCX Export Done: {str(opath)}[/]")
+                        self.call_from_thread(lambda: self.notify(f"DOCX Saved: {opath.name}", title="Export Complete"))
                     else:
                         loop = asyncio.new_event_loop()
                         asyncio.set_event_loop(loop)
                         loop.run_until_complete(generate_pdf_core(ipath, opath, self.settings, log, prog))
                         log(f"[green]✓ PDF Export Done: {str(opath)}[/]")
+                        self.call_from_thread(lambda: self.notify(f"PDF Saved: {opath.name}", title="Export Complete"))
 
                     self.last_output_path = opath
                     self.call_from_thread(enable_btn)
