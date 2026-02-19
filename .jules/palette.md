@@ -17,3 +17,7 @@
 ## 2024-05-24 - The Silent Footer
 **Learning:** Textual `BINDINGS` without explicit descriptions default to raw action names in the `Footer`, confusing users with internal terminology.
 **Action:** Always provide the 3rd argument (description) in `Binding` definitions to ensure user-friendly labels.
+
+## 2024-05-25 - The Frozen Interface Fallacy
+**Learning:** Users interpret a lack of immediate visual feedback during long-running operations as a system freeze or ignored input, leading to repeated clicks.
+**Action:** Always toggle button states (disable/label change) at the start of an async operation and restore them in a `finally` block to ensure resilience.
