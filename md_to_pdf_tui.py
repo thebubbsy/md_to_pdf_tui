@@ -815,6 +815,20 @@ if HAS_TEXTUAL:
         def __init__(self, cli_file=None, paste_content=None):
             super().__init__(); self.cli_file = cli_file; self.paste_content = paste_content; self.settings = load_settings(); self.recent_files = load_recent_files(); self.last_output_path = None; self.use_paste_source = bool(paste_content)
 
+        def notify_user(self, message: str, severity: str = "information", title: str = "") -> None:
+            """Helper to show a toast notification and log the message."""
+            self.notify(message, severity=severity, title=title)
+
+            # Log to RichLog with appropriate color
+            color_map = {"information": "green", "warning": "yellow", "error": "red"}
+            color = color_map.get(severity, "white")
+
+            try:
+                log_widget = self.query_one("#log", RichLog)
+                log_widget.write(f"[{color}]{title}: {message}[/]" if title else f"[{color}]{message}[/]")
+            except Exception:
+                pass
+
         def update_file_preview(self, filepath: str) -> None:
             try:
                 # Reset container to just text if needed
@@ -1060,7 +1074,18 @@ The file `{filepath}` could not be found.
             self.push_screen(HelpScreen())
 
         def action_open_pdf(self):
-            if self.last_output_path and self.last_output_path.exists(): os.startfile(str(self.last_output_path))
+            if self.last_output_path and self.last_output_path.exists():
+                try:
+                    if sys.platform == "win32":
+                        os.startfile(str(self.last_output_path))
+                    elif sys.platform == "darwin":
+                        subprocess.call(["open", str(self.last_output_path)])
+                    else:
+                        subprocess.call(["xdg-open", str(self.last_output_path)])
+                except Exception as e:
+                    self.notify_user(f"Failed to open file: {e}", severity="error", title="Error")
+            else:
+                self.notify_user("No output file to open yet.", severity="warning", title="Info")
 
         def action_browser_preview(self):
             content = ""
@@ -1088,9 +1113,9 @@ The file `{filepath}` could not be found.
                 preview_path = temp_dir / "preview.html"
                 preview_path.write_text(html, encoding="utf-8")
                 webbrowser.open(f"file://{preview_path.resolve()}")
-                self.call_from_thread(lambda: self.query_one("#log", RichLog).write("[green]Browser preview opened.[/]"))
+                self.call_from_thread(self.notify_user, "Browser preview opened.", severity="information", title="Preview")
              except Exception as e:
-                self.call_from_thread(lambda: self.query_one("#log", RichLog).write(f"[red]Preview Error: {e}[/]"))
+                self.call_from_thread(self.notify_user, f"Preview Error: {e}", severity="error", title="Error")
 
         def action_render_tui(self):
             content = ""
@@ -1204,12 +1229,12 @@ The file `{filepath}` could not be found.
                             else:
                                 container.mount(Static("[red]Image missing[/]"))
 
-                    self.query_one("#log", RichLog).write("[green]TUI Render Complete![/]")
+                    self.call_from_thread(self.notify_user, "TUI Render Complete!", severity="information", title="Render")
 
                 self.call_from_thread(update_ui)
 
              except Exception as e:
-                self.call_from_thread(lambda: self.query_one("#log", RichLog).write(f"[red]TUI Render Error: {e}[/]"))
+                self.call_from_thread(self.notify_user, f"TUI Render Error: {e}", severity="error", title="Error")
 
         @work(exclusive=True, thread=True)
         def run_conversion(self, fmt="pdf") -> None:
@@ -1222,7 +1247,7 @@ The file `{filepath}` could not be found.
                 if self.use_paste_source:
                     text_content = self.query_one("#paste-area", TextArea).text
                     if not text_content.strip():
-                        log("[yellow]⚠️  Paste area is empty![/]")
+                        self.call_from_thread(self.notify_user, "Paste area is empty!", severity="warning", title="Input Required")
                         return
 
                     if text_content.strip().startswith("graph T"):
@@ -1256,7 +1281,7 @@ The file `{filepath}` could not be found.
                             loop = asyncio.new_event_loop()
                             asyncio.set_event_loop(loop)
                             loop.run_until_complete(generate_docx_core(ipath, opath, log, prog, settings=self.settings))
-                            log(f"[green]✓ DOCX Export Done: {str(opath)}[/]")
+                            self.call_from_thread(self.notify_user, f"DOCX Export Done: {opath.name}", severity="information", title="Success")
                         else:
                             loop = asyncio.new_event_loop()
                             asyncio.set_event_loop(loop)
@@ -1268,7 +1293,7 @@ The file `{filepath}` could not be found.
                                 pass
 
                             loop.run_until_complete(generate_pdf_core(ipath, opath, self.settings, log, prog))
-                            log(f"[green]✓ PDF Export Done: {str(opath)}[/]")
+                            self.call_from_thread(self.notify_user, f"PDF Export Done: {opath.name}", severity="information", title="Success")
 
                         self.last_output_path = opath
                         self.call_from_thread(enable_btn)
@@ -1276,7 +1301,7 @@ The file `{filepath}` could not be found.
                 else:
                     inp = self.query_one("#md-input", Input).value.strip()
                     if not inp:
-                        log("[yellow]⚠️  Please select a markdown file first![/]")
+                        self.call_from_thread(self.notify_user, "Please select a markdown file first!", severity="warning", title="Input Required")
                         self.call_from_thread(self.query_one("#md-input", Input).focus)
                         return
                     ipath = Path(inp).resolve()
@@ -1295,16 +1320,16 @@ The file `{filepath}` could not be found.
                         asyncio.set_event_loop(loop)
                         # Pass self.settings to ensure theme is used
                         loop.run_until_complete(generate_docx_core(ipath, opath, log, prog, settings=self.settings))
-                        log(f"[green]✓ DOCX Export Done: {str(opath)}[/]")
+                        self.call_from_thread(self.notify_user, f"DOCX Export Done: {opath.name}", severity="information", title="Success")
                     else:
                         loop = asyncio.new_event_loop()
                         asyncio.set_event_loop(loop)
                         loop.run_until_complete(generate_pdf_core(ipath, opath, self.settings, log, prog))
-                        log(f"[green]✓ PDF Export Done: {str(opath)}[/]")
+                        self.call_from_thread(self.notify_user, f"PDF Export Done: {opath.name}", severity="information", title="Success")
 
                     self.last_output_path = opath
                     self.call_from_thread(enable_btn)
-            except Exception as e: log(f"[red]Error: {e}[/]")
+            except Exception as e: self.call_from_thread(self.notify_user, f"Error: {e}", severity="error", title="Conversion Failed")
 
 async def run_gallery_mode(md_path: Path) -> None:
     print("--- Gallery Mode: Generating for all themes ---")
