@@ -17,3 +17,7 @@
 ## 2024-05-24 - The Silent Footer
 **Learning:** Textual `BINDINGS` without explicit descriptions default to raw action names in the `Footer`, confusing users with internal terminology.
 **Action:** Always provide the 3rd argument (description) in `Binding` definitions to ensure user-friendly labels.
+
+## 2024-05-25 - The Vanishing Button
+**Learning:** `App.query_one` only searches the active screen. Async workers that update UI must handle `NoMatches` exceptions if the user navigates (e.g., opens a modal) while the worker is running.
+**Action:** Always wrap UI updates in async callbacks with `try/except` or check screen state before querying widgets.
