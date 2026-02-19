@@ -1,5 +1,6 @@
 
 import unittest
+import unittest.mock
 import tempfile
 import shutil
 import os
@@ -66,6 +67,37 @@ class TestProcessResources(unittest.TestCase):
             # Verify HTML tag replacement
             expected_html = f"src='{expected_path}'"
             self.assertIn(expected_html, new_text)
+
+    @unittest.mock.patch('urllib.request.urlopen')
+    def test_process_resources_remote_cache(self, mock_urlopen):
+        # Setup mock to simulate a download
+        mock_response = unittest.mock.Mock()
+        mock_response.__enter__ = unittest.mock.Mock(return_value=mock_response)
+        mock_response.__exit__ = unittest.mock.Mock(return_value=None)
+        mock_response.read.return_value = b"fake image data"
+        mock_urlopen.return_value = mock_response
+
+        # Use a fake URL
+        url = "http://example.com/image.png"
+        md_text = f"![test]({url})"
+
+        # Run process_resources twice with DIFFERENT temp dirs (simulating different runs)
+        # 1st Run
+        with tempfile.TemporaryDirectory() as t1:
+            process_resources(md_text, Path(t1))
+
+        # 2nd Run
+        with tempfile.TemporaryDirectory() as t2:
+            process_resources(md_text, Path(t2))
+
+        # Check how many times urlopen was called
+        # Ideally, with caching, it should be called ONCE (if cache persists across runs).
+        print(f"\nurlopen call count: {mock_urlopen.call_count}")
+
+        # We don't assert call count here yet because we know it fails (returns 2).
+        # We can just print it. Or assert it equals 1 and expect failure.
+        # Let's assert it's 1, so the test fails, confirming the issue.
+        self.assertEqual(mock_urlopen.call_count, 1, "Resources should be cached and not re-downloaded.")
 
 if __name__ == "__main__":
     unittest.main()
