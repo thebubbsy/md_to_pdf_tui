@@ -4,7 +4,35 @@ import tempfile
 import shutil
 import os
 from pathlib import Path
-from md_to_pdf_tui import process_resources
+from md_to_pdf_tui import process_resources, sanitize_mermaid_code
+
+class TestSanitizeMermaidCode(unittest.TestCase):
+    def test_basic_sanitize(self):
+        input_code = 'graph TD\nA["Test"] --> B["123"]'
+        expected = 'graph TD\nA["Test"] --> B["123"]'
+        self.assertEqual(sanitize_mermaid_code(input_code), expected)
+
+    def test_sanitize_list_markers(self):
+        input_code = 'graph TD\nA["- Item 1\n* Item 2"]'
+        # Expect zero-width space after markers
+        expected = 'graph TD\nA["-&#8203; Item 1\n*&#8203; Item 2"]'
+        self.assertEqual(sanitize_mermaid_code(input_code), expected)
+
+    def test_sanitize_numbered_list(self):
+        input_code = "graph TD\nA['1. Item 1\n2. Item 2']"
+        expected = "graph TD\nA['1.&#8203; Item 1\n2.&#8203; Item 2']"
+        self.assertEqual(sanitize_mermaid_code(input_code), expected)
+
+    def test_sanitize_mixed_quotes(self):
+        input_code = 'graph TD\nA["- Item 1"] --> B[\'1. Item 2\']'
+        expected = 'graph TD\nA["-&#8203; Item 1"] --> B[\'1.&#8203; Item 2\']'
+        self.assertEqual(sanitize_mermaid_code(input_code), expected)
+
+    def test_sanitize_escaped_quotes(self):
+        input_code = 'graph TD\nA["String with \\"quotes\\" inside"]'
+        # Should not touch internal quotes if they are escaped properly
+        expected = 'graph TD\nA["String with \\"quotes\\" inside"]'
+        self.assertEqual(sanitize_mermaid_code(input_code), expected)
 
 class TestProcessResources(unittest.TestCase):
     def test_process_resources_local_images(self):
