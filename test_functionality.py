@@ -4,7 +4,8 @@ import tempfile
 import shutil
 import os
 from pathlib import Path
-from md_to_pdf_tui import process_resources, sanitize_mermaid_code
+from unittest.mock import patch, MagicMock
+from md_to_pdf_tui import process_resources, sanitize_mermaid_code, open_file_externally
 
 class TestSanitizeMermaidCode(unittest.TestCase):
     def test_basic_sanitize(self):
@@ -66,6 +67,33 @@ class TestProcessResources(unittest.TestCase):
             # Verify HTML tag replacement
             expected_html = f"src='{expected_path}'"
             self.assertIn(expected_html, new_text)
+
+class TestOpenFile(unittest.TestCase):
+    @patch("platform.system")
+    @patch("os.startfile", create=True) # create=True for non-Windows systems
+    @patch("subprocess.run")
+    def test_open_file_windows(self, mock_run, mock_startfile, mock_system):
+        mock_system.return_value = "Windows"
+        with tempfile.NamedTemporaryFile() as tmp:
+            open_file_externally(tmp.name)
+            mock_startfile.assert_called_with(str(Path(tmp.name).resolve()))
+            mock_run.assert_not_called()
+
+    @patch("platform.system")
+    @patch("subprocess.run")
+    def test_open_file_mac(self, mock_run, mock_system):
+        mock_system.return_value = "Darwin"
+        with tempfile.NamedTemporaryFile() as tmp:
+            open_file_externally(tmp.name)
+            mock_run.assert_called_with(["open", str(Path(tmp.name).resolve())], check=False)
+
+    @patch("platform.system")
+    @patch("subprocess.run")
+    def test_open_file_linux(self, mock_run, mock_system):
+        mock_system.return_value = "Linux"
+        with tempfile.NamedTemporaryFile() as tmp:
+            open_file_externally(tmp.name)
+            mock_run.assert_called_with(["xdg-open", str(Path(tmp.name).resolve())], check=False)
 
 if __name__ == "__main__":
     unittest.main()
