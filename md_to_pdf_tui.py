@@ -173,6 +173,24 @@ def open_folder_dialog() -> Optional[str]:
     except Exception:
         return None
 
+def open_file_externally(path: str) -> None:
+    """Opens a file or directory using the default system application."""
+    import platform
+    p = Path(path).resolve()
+    if not p.exists():
+        raise FileNotFoundError(f"Path not found: {path}")
+
+    system = platform.system()
+    try:
+        if system == "Windows":
+            os.startfile(str(p))
+        elif system == "Darwin":
+            subprocess.run(["open", str(p)], check=False)
+        else: # Linux
+            subprocess.run(["xdg-open", str(p)], check=False)
+    except Exception as e:
+        raise RuntimeError(f"Failed to open {path}: {e}")
+
 # --- Regex Patterns ---
 # Regex for standard markdown images. Handles optional title: ![alt](url "title")
 MD_IMG_PATTERN = re.compile(r'!\[([^\]]*)\]\s*\(\s*([^\s)]+)(?:\s+["\'].*?["\'])?\s*\)')
@@ -803,6 +821,8 @@ if HAS_TEXTUAL:
         #editor-toolbar { height: 3; margin-bottom: 1; align: left middle; background: #21262d; padding-left: 1; }
         .tool-btn { min-width: 5; margin-right: 1; height: 1; background: #30363d; border: none; }
         .tool-btn:hover { background: #58a6ff; color: #161b22; }
+        .icon-btn { min-width: 5; margin-left: 1; background: #30363d; border: none; }
+        .icon-btn:hover { background: #58a6ff; color: #161b22; }
         """
         BINDINGS = [
             Binding("ctrl+o", "browse_file", "Browse"),
@@ -878,7 +898,7 @@ The file `{filepath}` could not be found.
                             with Horizontal(classes="row"):
                                 yield Label("Input:"); yield Input(id="md-input", placeholder="Select file or enter path..."); yield Button("Browse", id="browse-btn", tooltip="Select a Markdown file to convert")
                             with Horizontal(classes="row"):
-                                yield Label("Output Folder:"); yield Input(value=self.settings.get("output_folder", ""), id="out-input", placeholder="Leave empty to save alongside input file"); yield Button("Browse", id="browse-out-btn", tooltip="Select destination folder for generated files")
+                                yield Label("Output Folder:"); yield Input(value=self.settings.get("output_folder", ""), id="out-input", placeholder="Leave empty to save alongside input file"); yield Button("Browse", id="browse-out-btn", tooltip="Select destination folder for generated files"); yield Button("📂", id="btn-open-folder", classes="icon-btn", tooltip="Open Output Folder")
                             with Horizontal(classes="row"):
                                 yield Label("Use Paste:"); yield Switch(value=False, id="source-switch", tooltip="Toggle between file input and text editor")
                         with Container(classes="section"):
@@ -1010,6 +1030,31 @@ The file `{filepath}` could not be found.
             elif event.button.id == "browse-out-btn":
                 d = open_folder_dialog()
                 if d: self.query_one("#out-input", Input).value = d
+            elif event.button.id == "btn-open-folder":
+                out_val = self.query_one("#out-input", Input).value.strip()
+                target_dir = None
+
+                if out_val:
+                    target_dir = Path(out_val)
+                elif self.query_one("#md-input", Input).value.strip():
+                    try:
+                        inp = Path(self.query_one("#md-input", Input).value.strip())
+                        if inp.exists():
+                            target_dir = inp.parent
+                    except Exception:
+                        pass
+
+                if not target_dir:
+                     target_dir = Path(self.settings.get("output_folder", str(Path.home() / "Documents")))
+
+                if target_dir and target_dir.exists():
+                     try:
+                        open_file_externally(str(target_dir))
+                        self.query_one("#log", RichLog).write(f"[green]Opened folder: {target_dir}[/]")
+                     except Exception as e:
+                        self.query_one("#log", RichLog).write(f"[red]Error opening folder: {e}[/]")
+                else:
+                     self.query_one("#log", RichLog).write(f"[yellow]Folder not found: {target_dir}[/]")
             elif event.button.id == "browser-preview-btn":
                 self.action_browser_preview()
             elif event.button.id == "tui-render-btn":
@@ -1060,7 +1105,11 @@ The file `{filepath}` could not be found.
             self.push_screen(HelpScreen())
 
         def action_open_pdf(self):
-            if self.last_output_path and self.last_output_path.exists(): os.startfile(str(self.last_output_path))
+            if self.last_output_path and self.last_output_path.exists():
+                try:
+                    open_file_externally(str(self.last_output_path))
+                except Exception as e:
+                    self.query_one("#log", RichLog).write(f"[red]Error opening file: {e}[/]")
 
         def action_browser_preview(self):
             content = ""
