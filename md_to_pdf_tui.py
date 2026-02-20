@@ -460,7 +460,7 @@ async def render_png_page(browser, md_path: Path, png_path: Path, settings: dict
     md_text = await asyncio.get_running_loop().run_in_executor(None, md_path.read_text, "utf-8")
     html_content = create_html_content(md_text, settings)
     
-    tmp_h = md_path.with_suffix(".tmp.html")
+    tmp_h = md_path.with_suffix(f".{uuid.uuid4()}.tmp.html")
     await asyncio.get_running_loop().run_in_executor(None, tmp_h.write_text, html_content, "utf-8")
         
     # Use an extreme viewport and device scale for 24K resolution
@@ -530,7 +530,7 @@ async def render_png_page(browser, md_path: Path, png_path: Path, settings: dict
                 except: pass
             sys.exit(1)
 
-        await page.wait_for_timeout(2000) # Final stabilization
+        await page.wait_for_timeout(500) # Final stabilization
     except Exception as e:
         if log_fn: log_fn(f"Timeout or Error: {e}")
         # Check if it was a timeout but maybe it still rendered
@@ -551,10 +551,8 @@ async def render_png_page(browser, md_path: Path, png_path: Path, settings: dict
 
     await page.close()
 
-    # KEEP tmp_h for debugging in gallery mode
-    if "--gallery" not in sys.argv:
-        try: os.remove(tmp_h)
-        except: pass
+    try: os.remove(tmp_h)
+    except: pass
 
 async def generate_png_core(md_path: Path, png_path: Path, settings: dict, log_fn=print, prog_fn=None, browser=None) -> None:
     if browser:
@@ -1312,11 +1310,21 @@ async def run_gallery_mode(md_path: Path) -> None:
 
     async with async_playwright() as p:
         browser = await p.chromium.launch()
+        sem = asyncio.Semaphore(5)
+
+        async def run_with_sem(t_path, t_out, t_settings):
+            async with sem:
+                await generate_png_core(t_path, t_out, t_settings, browser=browser)
+
+        tasks = []
         for theme in THEMES.keys():
-            settings["theme"] = theme
+            # Create a copy of settings for each task to avoid race conditions
+            task_settings = settings.copy()
+            task_settings["theme"] = theme
             gallery_path = md_path.parent / f"{md_path.stem}_{theme.lower().replace(' ', '_')}.png"
-            # Pass the shared browser instance
-            await generate_png_core(md_path, gallery_path, settings, browser=browser)
+            tasks.append(run_with_sem(md_path, gallery_path, task_settings))
+
+        await asyncio.gather(*tasks)
         await browser.close()
     print("Gallery generation complete.")
 
