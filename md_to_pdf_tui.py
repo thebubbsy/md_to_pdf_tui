@@ -565,56 +565,7 @@ async def generate_png_core(md_path: Path, png_path: Path, settings: dict, log_f
             await render_png_page(browser, md_path, png_path, settings, log_fn, prog_fn)
             await browser.close()
 
-async def generate_docx_core(md_path: Path, docx_path: Path, log_fn=print, prog_fn=None, settings: dict=None) -> None:
-    if log_fn: log_fn(f"Converting to DOCX: {md_path.name}")
-    if prog_fn: prog_fn(10)
-    
-    # Check for pandoc
-    global _PANDOC_AVAILABLE
-    if _PANDOC_AVAILABLE is None:
-        try:
-            proc = await asyncio.create_subprocess_exec("pandoc", "--version", stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.DEVNULL)
-            await proc.wait()
-            if proc.returncode != 0:
-                raise subprocess.CalledProcessError(proc.returncode, ["pandoc", "--version"])
-            _PANDOC_AVAILABLE = True
-        except FileNotFoundError:
-            _PANDOC_AVAILABLE = False
-
-    if _PANDOC_AVAILABLE is False:
-        raise RuntimeError("Pandoc not found. Please install pandoc to export to DOCX.")
-    
-    # Determine Theme Colors for Alerts
-    theme_name = settings.get("theme", "GitHub Light") if settings else "GitHub Light"
-    if theme_name not in THEMES: theme_name = "GitHub Light"
-    t = THEMES[theme_name]
-    
-    # Define Alert Styles based on Theme
-    # Note: Pandoc handles minimal CSS on tables. We use border-left and background.
-    alert_styles = {
-        "NOTE": {"color": "#0969da", "bg": t['secondary'], "icon": "ℹ️"},
-        "TIP": {"color": "#1f883d", "bg": t['secondary'], "icon": "💡"},
-        "IMPORTANT": {"color": "#8250df", "bg": t['secondary'], "icon": "📢"},
-        "WARNING": {"color": "#bf8700", "bg": t['secondary'], "icon": "⚠️"},
-        "CAUTION": {"color": "#cf222e", "bg": t['secondary'], "icon": "🛑"}
-    }
-    
-    # Override for Dark Modes to ensure visibility
-    if "Dark" in theme_name or "Dracula" in theme_name or "Cyberpunk" in theme_name or "Obsidian" in theme_name or "Monokai" in theme_name:
-         alert_styles["NOTE"]["color"] = "#58a6ff"
-         alert_styles["TIP"]["color"] = "#3fb950"
-         alert_styles["IMPORTANT"]["color"] = "#a371f7"
-         alert_styles["WARNING"]["color"] = "#d29922"
-         alert_styles["CAUTION"]["color"] = "#f85149"
-
-    if prog_fn: prog_fn(20)
-
-    try:
-        md_text = await asyncio.get_running_loop().run_in_executor(None, md_path.read_text, "utf-8")
-    except UnicodeDecodeError:
-        raise ValueError(f"The file '{md_path.name}' is not a valid text file. Please ensure you are converting a Markdown (.md) file, not a binary file like PDF or Image.")
-    
-    # --- PROCESS ALERTS ---
+def _process_alerts(md_text: str, alert_styles: dict, txt_color: str) -> str:
     # Regex to capture > [!TYPE] ... content ...
     # We iterate line by line to handle the quote blocks correctly
     lines = md_text.split('\n')
@@ -624,6 +575,12 @@ async def generate_docx_core(md_path: Path, docx_path: Path, log_fn=print, prog_
     alert_content = []
 
     for line in lines:
+        # Optimization: Fast skip for lines that don't start with quote
+        # ALERT_PATTERN starts with ^\s*>
+        if not in_alert and ">" not in line:
+            processed_lines.append(line)
+            continue
+
         # Check for alert header with flexible whitespace
         # matches: > [!NOTE],   > [!NOTE], >[!NOTE]
         match = ALERT_PATTERN.match(line)
@@ -653,7 +610,7 @@ async def generate_docx_core(md_path: Path, docx_path: Path, log_fn=print, prog_
                 # End of alert block
                 style = alert_styles.get(alert_type.upper(), alert_styles["NOTE"])
                 c_html = "<br/>".join(alert_content)
-                html_table = f'<table style="width:100%; border-left: 5px solid {style["color"]}; background-color: {style["bg"]}; margin-bottom: 10px;"><tr><td style="padding: 10px; color: {t["txt"]};"><strong>{style["icon"]} {alert_type.upper()} - </strong><br/>{c_html}</td></tr></table>'
+                html_table = f'<table style="width:100%; border-left: 5px solid {style["color"]}; background-color: {style["bg"]}; margin-bottom: 10px;"><tr><td style="padding: 10px; color: {txt_color};"><strong>{style["icon"]} {alert_type.upper()} - </strong><br/>{c_html}</td></tr></table>'
                 processed_lines.append(html_table)
                 processed_lines.append("") # Spacer
                 in_alert = False
@@ -666,11 +623,63 @@ async def generate_docx_core(md_path: Path, docx_path: Path, log_fn=print, prog_
     if in_alert:
         style = alert_styles.get(alert_type.upper(), alert_styles["NOTE"])
         c_html = "<br/>".join(alert_content)
-        html_table = f'<table style="width:100%; border-left: 5px solid {style["color"]}; background-color: {style["bg"]}; margin-bottom: 10px;"><tr><td style="padding: 10px; color: {t["txt"]};"><strong>{style["icon"]} {alert_type.upper()} - </strong><br/>{c_html}</td></tr></table>'
+        html_table = f'<table style="width:100%; border-left: 5px solid {style["color"]}; background-color: {style["bg"]}; margin-bottom: 10px;"><tr><td style="padding: 10px; color: {txt_color};"><strong>{style["icon"]} {alert_type.upper()} - </strong><br/>{c_html}</td></tr></table>'
         processed_lines.append(html_table)
         processed_lines.append("")
-        
-    md_text = "\n".join(processed_lines)
+
+    return "\n".join(processed_lines)
+
+async def generate_docx_core(md_path: Path, docx_path: Path, log_fn=print, prog_fn=None, settings: dict=None) -> None:
+    if log_fn: log_fn(f"Converting to DOCX: {md_path.name}")
+    if prog_fn: prog_fn(10)
+
+    # Check for pandoc
+    global _PANDOC_AVAILABLE
+    if _PANDOC_AVAILABLE is None:
+        try:
+            proc = await asyncio.create_subprocess_exec("pandoc", "--version", stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.DEVNULL)
+            await proc.wait()
+            if proc.returncode != 0:
+                raise subprocess.CalledProcessError(proc.returncode, ["pandoc", "--version"])
+            _PANDOC_AVAILABLE = True
+        except FileNotFoundError:
+            _PANDOC_AVAILABLE = False
+
+    if _PANDOC_AVAILABLE is False:
+        raise RuntimeError("Pandoc not found. Please install pandoc to export to DOCX.")
+
+    # Determine Theme Colors for Alerts
+    theme_name = settings.get("theme", "GitHub Light") if settings else "GitHub Light"
+    if theme_name not in THEMES: theme_name = "GitHub Light"
+    t = THEMES[theme_name]
+
+    # Define Alert Styles based on Theme
+    # Note: Pandoc handles minimal CSS on tables. We use border-left and background.
+    alert_styles = {
+        "NOTE": {"color": "#0969da", "bg": t['secondary'], "icon": "ℹ️"},
+        "TIP": {"color": "#1f883d", "bg": t['secondary'], "icon": "💡"},
+        "IMPORTANT": {"color": "#8250df", "bg": t['secondary'], "icon": "📢"},
+        "WARNING": {"color": "#bf8700", "bg": t['secondary'], "icon": "⚠️"},
+        "CAUTION": {"color": "#cf222e", "bg": t['secondary'], "icon": "🛑"}
+    }
+
+    # Override for Dark Modes to ensure visibility
+    if "Dark" in theme_name or "Dracula" in theme_name or "Cyberpunk" in theme_name or "Obsidian" in theme_name or "Monokai" in theme_name:
+         alert_styles["NOTE"]["color"] = "#58a6ff"
+         alert_styles["TIP"]["color"] = "#3fb950"
+         alert_styles["IMPORTANT"]["color"] = "#a371f7"
+         alert_styles["WARNING"]["color"] = "#d29922"
+         alert_styles["CAUTION"]["color"] = "#f85149"
+
+    if prog_fn: prog_fn(20)
+
+    try:
+        md_text = await asyncio.get_running_loop().run_in_executor(None, md_path.read_text, "utf-8")
+    except UnicodeDecodeError:
+        raise ValueError(f"The file '{md_path.name}' is not a valid text file. Please ensure you are converting a Markdown (.md) file, not a binary file like PDF or Image.")
+
+    # Process Alerts
+    md_text = _process_alerts(md_text, alert_styles, t["txt"])
     
     mermaid_blocks = list(MERMAID_PATTERN.finditer(md_text))
     
