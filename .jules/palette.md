@@ -17,3 +17,7 @@
 ## 2024-05-24 - The Silent Footer
 **Learning:** Textual `BINDINGS` without explicit descriptions default to raw action names in the `Footer`, confusing users with internal terminology.
 **Action:** Always provide the 3rd argument (description) in `Binding` definitions to ensure user-friendly labels.
+
+## 2026-02-21 - The Modal Trap
+**Learning:** Modals without explicit "Close" buttons trap mouse users and keyboard users unaware of `Escape`. Invisible shortcuts create anxiety.
+**Action:** Always include a visible "Close" button and a `Footer` in modal dialogs to surface exit paths.
