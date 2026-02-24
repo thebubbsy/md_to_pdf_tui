@@ -494,43 +494,43 @@ async def render_png_page(browser, md_path: Path, png_path: Path, settings: dict
                         document.querySelector('.mermaid-error') ||
                         document.querySelector('.mermaid[data-processed="true"]')
             """, timeout=60000)
-        
-        # Check for error elements or "Syntax error" in SVG
-        is_error = await page.evaluate("""
-            () => {
-                if (document.querySelector('.mermaid-error')) return true;
-                const svg = document.querySelector('.mermaid svg');
-                if (svg && (svg.textContent.includes('Syntax error') || svg.id.includes('error'))) return true;
-                // Some versions use data-processed="error" (hypothetical, but safe to check)
-                if (document.querySelector('.mermaid[data-processed="error"]')) return true;
-                return false;
-            }
-        """)
 
-        if is_error:
-            error_msg = await page.evaluate("""
+            # Check for error elements or "Syntax error" in SVG
+            is_error = await page.evaluate("""
                 () => {
-                    const errEl = document.querySelector('.mermaid-error');
-                    if (errEl) return errEl.innerText;
+                    if (document.querySelector('.mermaid-error')) return true;
                     const svg = document.querySelector('.mermaid svg');
-                    if (svg) return svg.textContent;
-                    return "Unknown Mermaid Error";
+                    if (svg && (svg.textContent.includes('Syntax error') || svg.id.includes('error'))) return true;
+                    // Some versions use data-processed="error" (hypothetical, but safe to check)
+                    if (document.querySelector('.mermaid[data-processed="error"]')) return true;
+                    return false;
                 }
             """)
-            # Standardized error reporting for terminal detection
-            clean_msg = error_msg.strip().split('\n')[0] # Get just the first line
-            if log_fn:
-                log_fn(f"\n[!] MERMAID RENDER FAILURE [!]")
-                log_fn(f"Reason: {clean_msg}")
-                log_fn(f"Status: ABORTED\n")
-            
-            await page.close()
-            if "--gallery" not in sys.argv:
-                try: os.remove(tmp_h)
-                except: pass
-            sys.exit(1)
 
-        await page.wait_for_timeout(2000) # Final stabilization
+            if is_error:
+                error_msg = await page.evaluate("""
+                    () => {
+                        const errEl = document.querySelector('.mermaid-error');
+                        if (errEl) return errEl.innerText;
+                        const svg = document.querySelector('.mermaid svg');
+                        if (svg) return svg.textContent;
+                        return "Unknown Mermaid Error";
+                    }
+                """)
+                # Standardized error reporting for terminal detection
+                clean_msg = error_msg.strip().split('\n')[0] # Get just the first line
+                if log_fn:
+                    log_fn(f"\n[!] MERMAID RENDER FAILURE [!]")
+                    log_fn(f"Reason: {clean_msg}")
+                    log_fn(f"Status: ABORTED\n")
+
+                await page.close()
+                if "--gallery" not in sys.argv:
+                    try: os.remove(tmp_h)
+                    except: pass
+                sys.exit(1)
+
+            await page.wait_for_timeout(500) # Final stabilization
     except Exception as e:
         if log_fn: log_fn(f"Timeout or Error: {e}")
         # Check if it was a timeout but maybe it still rendered
@@ -557,6 +557,16 @@ async def render_png_page(browser, md_path: Path, png_path: Path, settings: dict
         except: pass
 
 async def generate_png_core(md_path: Path, png_path: Path, settings: dict, log_fn=print, prog_fn=None, browser=None) -> None:
+    # --- Optimization: Check for mermaid content before doing anything expensive ---
+    try:
+        md_text = await asyncio.get_running_loop().run_in_executor(None, md_path.read_text, "utf-8")
+        if not MERMAID_PATTERN.search(md_text):
+            if log_fn: log_fn("No mermaid diagrams found. Skipping PNG generation.")
+            return
+    except Exception:
+        pass # Let render_png_page handle file errors later if needed
+    # -----------------------------------------------------------------------------
+
     if browser:
         await render_png_page(browser, md_path, png_path, settings, log_fn, prog_fn)
     else:
