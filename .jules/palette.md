@@ -17,3 +17,7 @@
 ## 2024-05-24 - The Silent Footer
 **Learning:** Textual `BINDINGS` without explicit descriptions default to raw action names in the `Footer`, confusing users with internal terminology.
 **Action:** Always provide the 3rd argument (description) in `Binding` definitions to ensure user-friendly labels.
+
+## 2024-05-25 - The Feedback Loop
+**Learning:** Logs are for history, Notifications are for now. Users might miss a log entry at the bottom of the screen, but a toast notification at the top provides immediate, inescapable feedback.
+**Action:** Use toast notifications (`self.notify`) for primary success/error states to ensure users know when a long-running task completes.

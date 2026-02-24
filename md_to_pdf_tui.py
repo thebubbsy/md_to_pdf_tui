@@ -815,6 +815,17 @@ if HAS_TEXTUAL:
         def __init__(self, cli_file=None, paste_content=None):
             super().__init__(); self.cli_file = cli_file; self.paste_content = paste_content; self.settings = load_settings(); self.recent_files = load_recent_files(); self.last_output_path = None; self.use_paste_source = bool(paste_content)
 
+        def notify_user(self, message: str, severity: str = "information", title: str = ""):
+            """Helper to log and notify user simultaneously."""
+            def _do_notify():
+                self.notify(message, severity=severity, title=title)
+                # Map severity to Rich markup colors
+                color = "green" if severity == "information" else "red" if severity == "error" else "yellow"
+                log_msg = f"[{color}]{title}: {message}[/]" if title else f"[{color}]{message}[/]"
+                self.query_one("#log", RichLog).write(log_msg)
+
+            self.call_from_thread(_do_notify)
+
         def update_file_preview(self, filepath: str) -> None:
             try:
                 # Reset container to just text if needed
@@ -1088,9 +1099,9 @@ The file `{filepath}` could not be found.
                 preview_path = temp_dir / "preview.html"
                 preview_path.write_text(html, encoding="utf-8")
                 webbrowser.open(f"file://{preview_path.resolve()}")
-                self.call_from_thread(lambda: self.query_one("#log", RichLog).write("[green]Browser preview opened.[/]"))
+                self.notify_user("Browser preview opened.", title="Preview", severity="information")
              except Exception as e:
-                self.call_from_thread(lambda: self.query_one("#log", RichLog).write(f"[red]Preview Error: {e}[/]"))
+                self.notify_user(f"Preview Error: {e}", title="Error", severity="error")
 
         def action_render_tui(self):
             content = ""
@@ -1204,12 +1215,12 @@ The file `{filepath}` could not be found.
                             else:
                                 container.mount(Static("[red]Image missing[/]"))
 
-                    self.query_one("#log", RichLog).write("[green]TUI Render Complete![/]")
+                    self.notify_user("TUI Render Complete!", title="Render", severity="information")
 
                 self.call_from_thread(update_ui)
 
              except Exception as e:
-                self.call_from_thread(lambda: self.query_one("#log", RichLog).write(f"[red]TUI Render Error: {e}[/]"))
+                self.notify_user(f"TUI Render Error: {e}", title="Error", severity="error")
 
         @work(exclusive=True, thread=True)
         def run_conversion(self, fmt="pdf") -> None:
@@ -1257,6 +1268,7 @@ The file `{filepath}` could not be found.
                             asyncio.set_event_loop(loop)
                             loop.run_until_complete(generate_docx_core(ipath, opath, log, prog, settings=self.settings))
                             log(f"[green]✓ DOCX Export Done: {str(opath)}[/]")
+                            self.notify_user(f"Export Done: {opath.name}", title="Success")
                         else:
                             loop = asyncio.new_event_loop()
                             asyncio.set_event_loop(loop)
@@ -1269,6 +1281,7 @@ The file `{filepath}` could not be found.
 
                             loop.run_until_complete(generate_pdf_core(ipath, opath, self.settings, log, prog))
                             log(f"[green]✓ PDF Export Done: {str(opath)}[/]")
+                            self.notify_user(f"Export Done: {opath.name}", title="Success")
 
                         self.last_output_path = opath
                         self.call_from_thread(enable_btn)
@@ -1296,15 +1309,19 @@ The file `{filepath}` could not be found.
                         # Pass self.settings to ensure theme is used
                         loop.run_until_complete(generate_docx_core(ipath, opath, log, prog, settings=self.settings))
                         log(f"[green]✓ DOCX Export Done: {str(opath)}[/]")
+                        self.notify_user(f"Export Done: {opath.name}", title="Success")
                     else:
                         loop = asyncio.new_event_loop()
                         asyncio.set_event_loop(loop)
                         loop.run_until_complete(generate_pdf_core(ipath, opath, self.settings, log, prog))
                         log(f"[green]✓ PDF Export Done: {str(opath)}[/]")
+                        self.notify_user(f"Export Done: {opath.name}", title="Success")
 
                     self.last_output_path = opath
                     self.call_from_thread(enable_btn)
-            except Exception as e: log(f"[red]Error: {e}[/]")
+            except Exception as e:
+                log(f"[red]Error: {e}[/]")
+                self.notify_user(f"Error: {e}", title="Export Failed", severity="error")
 
 async def run_gallery_mode(md_path: Path) -> None:
     print("--- Gallery Mode: Generating for all themes ---")
