@@ -783,9 +783,41 @@ async def generate_docx_core(md_path: Path, docx_path: Path, log_fn=print, prog_
 if HAS_TEXTUAL:
     class HelpScreen(ModalScreen):
         BINDINGS = [Binding("escape", "dismiss", "Close"), Binding("f1", "dismiss", "Close")]
+
         def compose(self) -> ComposeResult:
-            yield Container(Static("[b]⌨️ Keyboard Shortcuts[/b]\n"), Static("[cyan]Ctrl+O[/] Browse\n[cyan]Ctrl+R[/] Convert\n[cyan]Ctrl+P[/] Open PDF\n[cyan]F1[/] Help"), Rule(), id="help-dialog")
-        CSS = "#help-dialog { width: 50; padding: 2; background: #1a1a1a; border: round #555; }"
+            with Container(id="help-dialog"):
+                yield Static("⌨️ Keyboard Shortcuts", id="help-title")
+                yield Static("[cyan]Ctrl+O[/] Browse\n[cyan]Ctrl+R[/] Convert\n[cyan]Ctrl+P[/] Open PDF\n[cyan]F1[/] Help", id="help-list")
+                yield Rule()
+                yield Button("Close", variant="primary", id="dismiss-btn")
+
+        def on_button_pressed(self, event: Button.Pressed) -> None:
+            if event.button.id == "dismiss-btn":
+                self.dismiss()
+                event.stop()
+
+        CSS = """
+        #help-dialog {
+            width: 50;
+            height: auto;
+            padding: 2;
+            background: #1a1a1a;
+            border: round #555;
+        }
+        #help-title {
+            text-align: center;
+            margin-bottom: 1;
+            text-style: bold;
+        }
+        #help-list {
+            margin-bottom: 1;
+            padding-left: 2;
+        }
+        #dismiss-btn {
+            width: 100%;
+            margin-top: 1;
+        }
+        """
 
     class MarkdownToPdfApp(App):
         CSS = """
@@ -884,7 +916,10 @@ The file `{filepath}` could not be found.
                         with Container(classes="section"):
                             yield Static("🎨 AESTHETICS")
                             with Horizontal(classes="row"):
-                                yield Label("Theme:"); yield Select.from_values(list(THEMES.keys()), allow_blank=False, value=self.settings.get("theme", "GitHub Light"), id="theme-select", tooltip="Select color theme for PDF/DOCX output")
+                                yield Label("Theme:")
+                                theme_sel = Select.from_values(list(THEMES.keys()), allow_blank=False, value=self.settings.get("theme", "GitHub Light"), id="theme-select")
+                                theme_sel.tooltip = "Select color theme for PDF/DOCX output"
+                                yield theme_sel
                         with Container(classes="section"):
                             yield Static("⚙️ OPTIONS")
                             with Horizontal(classes="row"):

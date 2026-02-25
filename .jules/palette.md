@@ -17,3 +17,7 @@
 ## 2024-05-24 - The Silent Footer
 **Learning:** Textual `BINDINGS` without explicit descriptions default to raw action names in the `Footer`, confusing users with internal terminology.
 **Action:** Always provide the 3rd argument (description) in `Binding` definitions to ensure user-friendly labels.
+
+## 2024-05-24 - The Modal Trap
+**Learning:** Modal screens in TUIs trap mouse users if they lack a visible "Close" button, as "Esc" is not always intuitive or discoverable.
+**Action:** Always include a visible `Button("Close")` in `ModalScreen` implementations to ensure accessibility for all input methods.
