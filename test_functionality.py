@@ -4,7 +4,43 @@ import tempfile
 import shutil
 import os
 from pathlib import Path
-from md_to_pdf_tui import process_resources, sanitize_mermaid_code
+from md_to_pdf_tui import process_resources, sanitize_mermaid_code, _process_alerts
+
+class TestAlertsProcessing(unittest.TestCase):
+    def setUp(self):
+        # Mock alert styles
+        self.alert_styles = {
+            "NOTE": {"color": "#blue", "bg": "#lightblue", "icon": "ℹ️"},
+            "WARNING": {"color": "#orange", "bg": "#lightorange", "icon": "⚠️"}
+        }
+        self.text_color = "#black"
+
+    def test_no_alerts(self):
+        md = "This is a normal paragraph.\n\nAnother paragraph."
+        result = _process_alerts(md, self.alert_styles, self.text_color)
+        self.assertEqual(md, result)
+
+    def test_single_alert(self):
+        md = "> [!NOTE]\n> This is a note."
+        # Verify transformation to HTML table
+        result = _process_alerts(md, self.alert_styles, self.text_color)
+        self.assertIn('<table', result)
+        self.assertIn('ℹ️ NOTE - ', result)
+        self.assertIn('This is a note.', result)
+
+    def test_multiline_alert(self):
+        md = "> [!WARNING]\n> Line 1\n> Line 2"
+        result = _process_alerts(md, self.alert_styles, self.text_color)
+        self.assertIn('⚠️ WARNING - ', result)
+        self.assertIn('Line 1<br/>Line 2', result)
+
+    def test_mixed_content(self):
+        md = "Text before.\n> [!NOTE]\n> Note content.\nText after."
+        result = _process_alerts(md, self.alert_styles, self.text_color)
+        self.assertIn("Text before.", result)
+        self.assertIn("Text after.", result)
+        self.assertIn("Note content", result)
+        self.assertIn("<table", result)
 
 class TestSanitizeMermaidCode(unittest.TestCase):
     def test_basic_sanitize(self):
