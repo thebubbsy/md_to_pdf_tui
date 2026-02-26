@@ -428,15 +428,35 @@ async def generate_pdf_core(md_path: Path, pdf_path: Path, settings: dict, log_f
         
         # Save Diagrams if enabled
         if settings.get("save_diagrams", False):
+            # Expand viewport to full height to prevent scroll race conditions during parallel capture
+            try:
+                full_height = await page.evaluate("document.body.scrollHeight")
+                vp = page.viewport_size
+                if vp and full_height > vp["height"]:
+                     await page.set_viewport_size({"width": vp["width"], "height": full_height + 100})
+            except Exception as e:
+                if log_fn: log_fn(f"Viewport resize error: {e}")
+
             elements = await page.locator(".mermaid").all()
             if elements:
                 if log_fn: log_fn(f"Saving {len(elements)} diagrams to separate files...")
                 out_dir = pdf_path.parent
                 stem = pdf_path.stem
+
+                tasks = []
+                sem = asyncio.Semaphore(5)
+
+                async def capture(element, path):
+                    async with sem:
+                        await element.screenshot(path=str(path))
+
                 for i, element in enumerate(elements):
                     d_path = out_dir / f"{stem}_diagram_{i+1}.png"
-                    await element.screenshot(path=str(d_path))
-                    if log_fn: log_fn(f"Saved diagram: {d_path}")
+                    tasks.append(capture(element, d_path))
+
+                if tasks:
+                    await asyncio.gather(*tasks)
+                    if log_fn: log_fn(f"Saved {len(elements)} diagrams.")
 
         opts = {"path": str(pdf_path.resolve()), "print_background": True}
         if u_height:
@@ -712,17 +732,39 @@ async def generate_docx_core(md_path: Path, docx_path: Path, log_fn=print, prog_
             except Exception as e:
                 if log_fn: log_fn(f"Warning: Timeout waiting for diagrams: {e}")
 
+            # Expand viewport to full height to prevent scroll race conditions during parallel capture
+            try:
+                full_height = await page.evaluate("document.body.scrollHeight")
+                vp = page.viewport_size
+                if vp and full_height > vp["height"]:
+                     await page.set_viewport_size({"width": vp["width"], "height": full_height + 100})
+            except Exception as e:
+                if log_fn: log_fn(f"Viewport resize error: {e}")
+
             elements = await page.locator(".mermaid").all()
             
             if len(elements) != len(mermaid_blocks):
                  if log_fn: log_fn(f"Warning: Block count ({len(mermaid_blocks)}) != Element count ({len(elements)})")
             
+            # Parallel screenshot capturing
+            tasks = []
+            sem = asyncio.Semaphore(5)
+
+            async def capture(element, path):
+                async with sem:
+                    await element.screenshot(path=str(path))
+
             for i, (block, element) in enumerate(zip(mermaid_blocks, elements)):
                  img_path = md_path.parent / f"diagram_{uuid.uuid4()}.png"
-                 await element.screenshot(path=str(img_path))
                  temp_images.append(img_path)
                  temp_files_to_cleanup.append(img_path)
+                 tasks.append(capture(element, img_path))
 
+            if tasks:
+                await asyncio.gather(*tasks)
+
+            # Post-processing loop
+            for i, img_path in enumerate(temp_images):
                  # Save to output if enabled
                  if settings and settings.get("save_diagrams", False):
                      try:
@@ -1155,11 +1197,31 @@ The file `{filepath}` could not be found.
                             await page.wait_for_timeout(500)
                         except: pass
 
+                        # Expand viewport to full height to prevent scroll race conditions during parallel capture
+                        try:
+                            full_height = await page.evaluate("document.body.scrollHeight")
+                            vp = page.viewport_size
+                            if vp and full_height > vp["height"]:
+                                 await page.set_viewport_size({"width": vp["width"], "height": full_height + 100})
+                        except Exception as e:
+                             self.call_from_thread(lambda: self.query_one("#log", RichLog).write(f"[red]Viewport resize error: {e}[/]"))
+
                         elements = await page.locator(".mermaid").all()
+
+                        tasks = []
+                        sem = asyncio.Semaphore(5)
+
+                        async def capture(el, path):
+                            async with sem:
+                                await el.screenshot(path=str(path))
+
                         for i, el in enumerate(elements):
                             p = temp_dir / f"diag_{i}.png"
-                            await el.screenshot(path=str(p))
                             images.append(p)
+                            tasks.append(capture(el, p))
+
+                        if tasks:
+                            await asyncio.gather(*tasks)
                         await browser.close()
 
                 loop = asyncio.new_event_loop()
