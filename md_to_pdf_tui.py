@@ -803,6 +803,8 @@ if HAS_TEXTUAL:
         #editor-toolbar { height: 3; margin-bottom: 1; align: left middle; background: #21262d; padding-left: 1; }
         .tool-btn { min-width: 5; margin-right: 1; height: 1; background: #30363d; border: none; }
         .tool-btn:hover { background: #58a6ff; color: #161b22; }
+        .icon-btn { width: 5; min-width: 5; margin-left: 1; height: 1; background: #30363d; border: none; }
+        .icon-btn:hover { background: #58a6ff; color: #161b22; }
         """
         BINDINGS = [
             Binding("ctrl+o", "browse_file", "Browse"),
@@ -814,6 +816,17 @@ if HAS_TEXTUAL:
 
         def __init__(self, cli_file=None, paste_content=None):
             super().__init__(); self.cli_file = cli_file; self.paste_content = paste_content; self.settings = load_settings(); self.recent_files = load_recent_files(); self.last_output_path = None; self.use_paste_source = bool(paste_content)
+
+        def open_file_externally(self, path: Path):
+            try:
+                if sys.platform == "win32":
+                    os.startfile(str(path))
+                elif sys.platform == "darwin":
+                    subprocess.call(("open", str(path)))
+                else:
+                    subprocess.call(("xdg-open", str(path)))
+            except Exception as e:
+                self.notify(f"Failed to open: {e}", severity="error")
 
         def update_file_preview(self, filepath: str) -> None:
             try:
@@ -878,13 +891,16 @@ The file `{filepath}` could not be found.
                             with Horizontal(classes="row"):
                                 yield Label("Input:"); yield Input(id="md-input", placeholder="Select file or enter path..."); yield Button("Browse", id="browse-btn", tooltip="Select a Markdown file to convert")
                             with Horizontal(classes="row"):
-                                yield Label("Output Folder:"); yield Input(value=self.settings.get("output_folder", ""), id="out-input", placeholder="Leave empty to save alongside input file"); yield Button("Browse", id="browse-out-btn", tooltip="Select destination folder for generated files")
+                                yield Label("Output Folder:"); yield Input(value=self.settings.get("output_folder", ""), id="out-input", placeholder="Leave empty to save alongside input file"); yield Button("Browse", id="browse-out-btn", tooltip="Select destination folder for generated files"); yield Button("📂", id="btn-open-folder", classes="icon-btn", tooltip="Open Output Folder")
                             with Horizontal(classes="row"):
                                 yield Label("Use Paste:"); yield Switch(value=False, id="source-switch", tooltip="Toggle between file input and text editor")
                         with Container(classes="section"):
                             yield Static("🎨 AESTHETICS")
                             with Horizontal(classes="row"):
-                                yield Label("Theme:"); yield Select.from_values(list(THEMES.keys()), allow_blank=False, value=self.settings.get("theme", "GitHub Light"), id="theme-select", tooltip="Select color theme for PDF/DOCX output")
+                                yield Label("Theme:")
+                                theme_select = Select.from_values(list(THEMES.keys()), allow_blank=False, value=self.settings.get("theme", "GitHub Light"), id="theme-select")
+                                theme_select.tooltip = "Select color theme for PDF/DOCX output"
+                                yield theme_select
                         with Container(classes="section"):
                             yield Static("⚙️ OPTIONS")
                             with Horizontal(classes="row"):
@@ -1010,6 +1026,22 @@ The file `{filepath}` could not be found.
             elif event.button.id == "browse-out-btn":
                 d = open_folder_dialog()
                 if d: self.query_one("#out-input", Input).value = d
+            elif event.button.id == "btn-open-folder":
+                out_path = self.query_one("#out-input", Input).value.strip()
+                if not out_path:
+                    # Fallback to input file folder
+                    inp_path = self.query_one("#md-input", Input).value.strip()
+                    if inp_path:
+                        out_path = str(Path(inp_path).parent)
+                    else:
+                         # Fallback to Documents
+                         out_path = self.settings.get("output_folder", str(Path.home() / "Documents"))
+
+                if out_path and Path(out_path).exists():
+                     self.open_file_externally(Path(out_path))
+                else:
+                     self.notify(f"Folder not found: {out_path}", severity="error")
+
             elif event.button.id == "browser-preview-btn":
                 self.action_browser_preview()
             elif event.button.id == "tui-render-btn":
@@ -1060,7 +1092,8 @@ The file `{filepath}` could not be found.
             self.push_screen(HelpScreen())
 
         def action_open_pdf(self):
-            if self.last_output_path and self.last_output_path.exists(): os.startfile(str(self.last_output_path))
+            if self.last_output_path and self.last_output_path.exists():
+                self.open_file_externally(self.last_output_path)
 
         def action_browser_preview(self):
             content = ""
