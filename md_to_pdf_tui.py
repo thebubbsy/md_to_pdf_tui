@@ -458,6 +458,8 @@ async def render_png_page(browser, md_path: Path, png_path: Path, settings: dict
     if log_fn: log_fn(f"Rendering PNG ({theme_name}): {md_path.name}")
     
     md_text = await asyncio.get_running_loop().run_in_executor(None, md_path.read_text, "utf-8")
+
+
     html_content = create_html_content(md_text, settings)
     
     tmp_h = md_path.with_suffix(".tmp.html")
@@ -557,6 +559,18 @@ async def render_png_page(browser, md_path: Path, png_path: Path, settings: dict
         except: pass
 
 async def generate_png_core(md_path: Path, png_path: Path, settings: dict, log_fn=print, prog_fn=None, browser=None) -> None:
+    # Optimization: Read file and check for mermaid before launching browser
+    if not browser:
+        try:
+            content = await asyncio.get_running_loop().run_in_executor(None, md_path.read_text, "utf-8")
+            # MERMAID_PATTERN checks for fenced blocks (```mermaid) which is what our parser supports
+            if not MERMAID_PATTERN.search(content):
+                if log_fn: log_fn("Skipping PNG generation: No Mermaid diagrams found.")
+                return
+        except Exception as e:
+            if log_fn: log_fn(f"Warning: Failed to optimize PNG generation: {e}")
+            pass # Let render_png_page handle file errors normally
+
     if browser:
         await render_png_page(browser, md_path, png_path, settings, log_fn, prog_fn)
     else:
