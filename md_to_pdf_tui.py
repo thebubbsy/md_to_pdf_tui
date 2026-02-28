@@ -460,7 +460,7 @@ async def render_png_page(browser, md_path: Path, png_path: Path, settings: dict
     md_text = await asyncio.get_running_loop().run_in_executor(None, md_path.read_text, "utf-8")
     html_content = create_html_content(md_text, settings)
     
-    tmp_h = md_path.with_suffix(".tmp.html")
+    tmp_h = md_path.with_suffix(f".{uuid.uuid4().hex[:8]}.tmp.html")
     await asyncio.get_running_loop().run_in_executor(None, tmp_h.write_text, html_content, "utf-8")
         
     # Use an extreme viewport and device scale for 24K resolution
@@ -1308,15 +1308,20 @@ The file `{filepath}` could not be found.
 
 async def run_gallery_mode(md_path: Path) -> None:
     print("--- Gallery Mode: Generating for all themes ---")
-    settings = load_settings()
+    base_settings = load_settings()
+    sem = asyncio.Semaphore(5)
+
+    async def render_theme(theme, browser):
+        async with sem:
+            settings = base_settings.copy()
+            settings["theme"] = theme
+            gallery_path = md_path.parent / f"{md_path.stem}_{theme.lower().replace(' ', '_')}.png"
+            await generate_png_core(md_path, gallery_path, settings, browser=browser)
 
     async with async_playwright() as p:
         browser = await p.chromium.launch()
-        for theme in THEMES.keys():
-            settings["theme"] = theme
-            gallery_path = md_path.parent / f"{md_path.stem}_{theme.lower().replace(' ', '_')}.png"
-            # Pass the shared browser instance
-            await generate_png_core(md_path, gallery_path, settings, browser=browser)
+        tasks = [render_theme(theme, browser) for theme in THEMES.keys()]
+        await asyncio.gather(*tasks)
         await browser.close()
     print("Gallery generation complete.")
 
