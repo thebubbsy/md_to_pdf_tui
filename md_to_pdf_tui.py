@@ -884,7 +884,10 @@ The file `{filepath}` could not be found.
                         with Container(classes="section"):
                             yield Static("🎨 AESTHETICS")
                             with Horizontal(classes="row"):
-                                yield Label("Theme:"); yield Select.from_values(list(THEMES.keys()), allow_blank=False, value=self.settings.get("theme", "GitHub Light"), id="theme-select", tooltip="Select color theme for PDF/DOCX output")
+                                yield Label("Theme:")
+                                theme_select = Select.from_values(list(THEMES.keys()), allow_blank=False, value=self.settings.get("theme", "GitHub Light"), id="theme-select")
+                                theme_select.tooltip = "Select color theme for PDF/DOCX output"
+                                yield theme_select
                         with Container(classes="section"):
                             yield Static("⚙️ OPTIONS")
                             with Horizontal(classes="row"):
@@ -1081,6 +1084,7 @@ The file `{filepath}` could not be found.
 
         @work(thread=True)
         def worker_browser_preview(self, content: str):
+             self.call_from_thread(lambda: setattr(self.query_one("#browser-preview-btn", Button), "loading", True))
              try:
                 temp_dir = Path(tempfile.mkdtemp())
                 processed_content = process_resources(content, temp_dir)
@@ -1091,6 +1095,8 @@ The file `{filepath}` could not be found.
                 self.call_from_thread(lambda: self.query_one("#log", RichLog).write("[green]Browser preview opened.[/]"))
              except Exception as e:
                 self.call_from_thread(lambda: self.query_one("#log", RichLog).write(f"[red]Preview Error: {e}[/]"))
+             finally:
+                self.call_from_thread(lambda: setattr(self.query_one("#browser-preview-btn", Button), "loading", False))
 
         def action_render_tui(self):
             content = ""
@@ -1125,6 +1131,8 @@ The file `{filepath}` could not be found.
 
         @work(thread=True)
         def worker_render_tui(self, content: str):
+             if HAS_PIXELS:
+                 self.call_from_thread(lambda: setattr(self.query_one("#tui-render-btn", Button), "loading", True))
              try:
                 temp_dir = Path(tempfile.mkdtemp())
                 processed_content = process_resources(content, temp_dir)
@@ -1210,9 +1218,14 @@ The file `{filepath}` could not be found.
 
              except Exception as e:
                 self.call_from_thread(lambda: self.query_one("#log", RichLog).write(f"[red]TUI Render Error: {e}[/]"))
+             finally:
+                if HAS_PIXELS:
+                    self.call_from_thread(lambda: setattr(self.query_one("#tui-render-btn", Button), "loading", False))
 
         @work(exclusive=True, thread=True)
         def run_conversion(self, fmt="pdf") -> None:
+            btn_id = "#docx-btn" if fmt == "docx" else "#convert-btn"
+            self.call_from_thread(lambda: setattr(self.query_one(btn_id, Button), "loading", True))
             log_w = self.query_one("#log", RichLog)
             def log(m): self.call_from_thread(lambda: log_w.write(m))
             def prog(v): self.call_from_thread(lambda: self.query_one("#progress-bar", ProgressBar).update(progress=v))
@@ -1305,6 +1318,8 @@ The file `{filepath}` could not be found.
                     self.last_output_path = opath
                     self.call_from_thread(enable_btn)
             except Exception as e: log(f"[red]Error: {e}[/]")
+            finally:
+                self.call_from_thread(lambda: setattr(self.query_one(btn_id, Button), "loading", False))
 
 async def run_gallery_mode(md_path: Path) -> None:
     print("--- Gallery Mode: Generating for all themes ---")

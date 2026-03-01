@@ -17,3 +17,7 @@
 ## 2024-05-24 - The Silent Footer
 **Learning:** Textual `BINDINGS` without explicit descriptions default to raw action names in the `Footer`, confusing users with internal terminology.
 **Action:** Always provide the 3rd argument (description) in `Binding` definitions to ensure user-friendly labels.
+
+## 2024-05-25 - The Frozen UI Illusion
+**Learning:** Background operations in a TUI without visual feedback make the app appear frozen, causing users to mash buttons or force quit.
+**Action:** Always toggle the `loading` property of `Button` widgets during async operations using `call_from_thread` in a `try...finally` block.
