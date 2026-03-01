@@ -557,6 +557,19 @@ async def render_png_page(browser, md_path: Path, png_path: Path, settings: dict
         except: pass
 
 async def generate_png_core(md_path: Path, png_path: Path, settings: dict, log_fn=print, prog_fn=None, browser=None) -> None:
+    # ⚡ Bolt Optimization: Early return if no Mermaid diagrams exist
+    def _check_mermaid():
+        try:
+            text = md_path.read_text("utf-8")
+            return bool(MERMAID_PATTERN.search(text))
+        except UnicodeDecodeError:
+            return False
+
+    has_mermaid = await asyncio.get_running_loop().run_in_executor(None, _check_mermaid)
+    if not has_mermaid:
+        if log_fn: log_fn(f"Skipping PNG generation: No Mermaid diagrams found in {md_path.name}")
+        return
+
     if browser:
         await render_png_page(browser, md_path, png_path, settings, log_fn, prog_fn)
     else:
