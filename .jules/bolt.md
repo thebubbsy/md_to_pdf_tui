@@ -5,3 +5,7 @@
 ## 2026-02-19 - Regex Compilation in Hot Path
 **Learning:** `sanitize_mermaid_code` recompiled regex patterns and redefined helper functions on every invocation. This was inefficient for documents with many mermaid blocks.
 **Action:** Moved regex patterns and helper functions to module level constants. Benchmarked ~14.6% improvement.
+
+## 2024-05-24 - Fast Skip for Regex in Loops
+**Learning:** Running regex `match()` operations on every single line of a large string can become a bottleneck when the matches are rare.
+**Action:** Use a fast string check (like the `in` operator) as an early return/skip condition inside tight loops before executing the complex regex.
