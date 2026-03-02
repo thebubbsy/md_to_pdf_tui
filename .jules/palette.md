@@ -17,3 +17,7 @@
 ## 2024-05-24 - The Silent Footer
 **Learning:** Textual `BINDINGS` without explicit descriptions default to raw action names in the `Footer`, confusing users with internal terminology.
 **Action:** Always provide the 3rd argument (description) in `Binding` definitions to ensure user-friendly labels.
+
+## 2024-06-13 - The Silent Background Tasks
+**Learning:** Background tasks triggered by buttons without visual feedback cause user uncertainty. Textual's Button widget natively supports a `loading` state which is perfect for this.
+**Action:** Always toggle the `loading` property on buttons that trigger long-running asynchronous or background operations to provide immediate feedback.

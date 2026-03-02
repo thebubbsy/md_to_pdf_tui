@@ -1081,6 +1081,15 @@ The file `{filepath}` could not be found.
 
         @work(thread=True)
         def worker_browser_preview(self, content: str):
+             def set_loading(state):
+                 def _update():
+                     try:
+                         self.query_one("#browser-preview-btn", Button).loading = state
+                     except Exception:
+                         pass
+                 self.call_from_thread(_update)
+
+             set_loading(True)
              try:
                 temp_dir = Path(tempfile.mkdtemp())
                 processed_content = process_resources(content, temp_dir)
@@ -1091,6 +1100,8 @@ The file `{filepath}` could not be found.
                 self.call_from_thread(lambda: self.query_one("#log", RichLog).write("[green]Browser preview opened.[/]"))
              except Exception as e:
                 self.call_from_thread(lambda: self.query_one("#log", RichLog).write(f"[red]Preview Error: {e}[/]"))
+             finally:
+                 set_loading(False)
 
         def action_render_tui(self):
             content = ""
@@ -1125,6 +1136,15 @@ The file `{filepath}` could not be found.
 
         @work(thread=True)
         def worker_render_tui(self, content: str):
+             def set_loading(state):
+                 def _update():
+                     try:
+                         self.query_one("#tui-render-btn", Button).loading = state
+                     except Exception:
+                         pass
+                 self.call_from_thread(_update)
+
+             set_loading(True)
              try:
                 temp_dir = Path(tempfile.mkdtemp())
                 processed_content = process_resources(content, temp_dir)
@@ -1210,6 +1230,8 @@ The file `{filepath}` could not be found.
 
              except Exception as e:
                 self.call_from_thread(lambda: self.query_one("#log", RichLog).write(f"[red]TUI Render Error: {e}[/]"))
+             finally:
+                 set_loading(False)
 
         @work(exclusive=True, thread=True)
         def run_conversion(self, fmt="pdf") -> None:
@@ -1218,6 +1240,16 @@ The file `{filepath}` could not be found.
             def prog(v): self.call_from_thread(lambda: self.query_one("#progress-bar", ProgressBar).update(progress=v))
             def enable_btn(): self.query_one("#open-btn", Button).disabled = False
 
+            btn_id = "#docx-btn" if fmt == "docx" else "#convert-btn"
+            def set_loading(state):
+                 def _update():
+                     try:
+                         self.query_one(btn_id, Button).loading = state
+                     except Exception:
+                         pass
+                 self.call_from_thread(_update)
+
+            set_loading(True)
             try:
                 if self.use_paste_source:
                     text_content = self.query_one("#paste-area", TextArea).text
@@ -1305,6 +1337,8 @@ The file `{filepath}` could not be found.
                     self.last_output_path = opath
                     self.call_from_thread(enable_btn)
             except Exception as e: log(f"[red]Error: {e}[/]")
+            finally:
+                set_loading(False)
 
 async def run_gallery_mode(md_path: Path) -> None:
     print("--- Gallery Mode: Generating for all themes ---")
