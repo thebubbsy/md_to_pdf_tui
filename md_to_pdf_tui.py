@@ -1217,7 +1217,14 @@ The file `{filepath}` could not be found.
             def log(m): self.call_from_thread(lambda: log_w.write(m))
             def prog(v): self.call_from_thread(lambda: self.query_one("#progress-bar", ProgressBar).update(progress=v))
             def enable_btn(): self.query_one("#open-btn", Button).disabled = False
+            def set_loading(state: bool):
+                try:
+                    self.query_one("#convert-btn", Button).loading = state
+                    self.query_one("#docx-btn", Button).loading = state
+                except Exception:
+                    pass
 
+            self.call_from_thread(lambda: set_loading(True))
             try:
                 if self.use_paste_source:
                     text_content = self.query_one("#paste-area", TextArea).text
@@ -1305,6 +1312,8 @@ The file `{filepath}` could not be found.
                     self.last_output_path = opath
                     self.call_from_thread(enable_btn)
             except Exception as e: log(f"[red]Error: {e}[/]")
+            finally:
+                self.call_from_thread(lambda: set_loading(False))
 
 async def run_gallery_mode(md_path: Path) -> None:
     print("--- Gallery Mode: Generating for all themes ---")
