@@ -557,13 +557,28 @@ async def render_png_page(browser, md_path: Path, png_path: Path, settings: dict
         except: pass
 
 async def generate_png_core(md_path: Path, png_path: Path, settings: dict, log_fn=print, prog_fn=None, browser=None) -> None:
+    def _check_mermaid():
+        text = md_path.read_text("utf-8")
+        return bool(MERMAID_PATTERN.search(text))
+
+    try:
+        loop = asyncio.get_running_loop()
+        has_mermaid = await loop.run_in_executor(None, _check_mermaid)
+    except Exception as e:
+        if log_fn: log_fn(f"Error reading {md_path}: {e}")
+        return
+
+    if not has_mermaid:
+        if log_fn: log_fn(f"Skipping PNG generation: No Mermaid diagrams found in {md_path.name}")
+        return
+
     if browser:
         await render_png_page(browser, md_path, png_path, settings, log_fn, prog_fn)
     else:
         async with async_playwright() as p:
-            browser = await p.chromium.launch()
-            await render_png_page(browser, md_path, png_path, settings, log_fn, prog_fn)
-            await browser.close()
+            browser_instance = await p.chromium.launch()
+            await render_png_page(browser_instance, md_path, png_path, settings, log_fn, prog_fn)
+            await browser_instance.close()
 
 async def generate_docx_core(md_path: Path, docx_path: Path, log_fn=print, prog_fn=None, settings: dict=None) -> None:
     if log_fn: log_fn(f"Converting to DOCX: {md_path.name}")
