@@ -624,6 +624,11 @@ async def generate_docx_core(md_path: Path, docx_path: Path, log_fn=print, prog_
     alert_content = []
 
     for line in lines:
+        # Optimization: fast skip for non-alert lines
+        if not in_alert and '>' not in line:
+            processed_lines.append(line)
+            continue
+
         # Check for alert header with flexible whitespace
         # matches: > [!NOTE],   > [!NOTE], >[!NOTE]
         match = ALERT_PATTERN.match(line)
