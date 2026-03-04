@@ -1,3 +1,25 @@
+From 516e9eb12e30db512562a32d56cd7c29a80b729b Mon Sep 17 00:00:00 2001
+From: "google-labs-jules[bot]"
+ <161369871+google-labs-jules[bot]@users.noreply.github.com>
+Date: Sat, 28 Feb 2026 06:31:03 +0000
+Subject: [PATCH] =?UTF-8?q?=E2=9A=A1=20Bolt:=20Concurrent=20Gallery=20Mode?=
+ =?UTF-8?q?=20Optimization?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+- Updated `run_gallery_mode` to process themes concurrently using `asyncio.gather`.
+- Added an `asyncio.Semaphore(5)` to limit the number of concurrent browser instances.
+- Created distinct copies of `settings` for each theme to prevent state leakage.
+- Changed the temporary HTML file path generation in `render_png_page` to use `uuid.uuid4()` to prevent race conditions during concurrent execution.
+- Recorded a learning in `.jules/bolt.md` about UUID-based temporary file naming for parallel tasks.
+
+Co-authored-by: thebubbsy <49204026+thebubbsy@users.noreply.github.com>
+---
+ .jules/bolt.md   |  4 ++++
+ md_to_pdf_tui.py | 17 +++++++++++------
+ 2 files changed, 15 insertions(+), 6 deletions(-)
+
 diff --git a/.jules/bolt.md b/.jules/bolt.md
 index 78e7975..d813763 100644
 --- a/.jules/bolt.md

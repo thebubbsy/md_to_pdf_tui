@@ -1,10 +1,9 @@
-
 import unittest
 import tempfile
 import shutil
 import os
 from pathlib import Path
-from md_to_pdf_tui import process_resources, sanitize_mermaid_code
+from md_to_pdf_tui import process_resources, sanitize_mermaid_code, is_pure_mermaid
 
 class TestSanitizeMermaidCode(unittest.TestCase):
     def test_basic_sanitize(self):
@@ -66,6 +65,22 @@ class TestProcessResources(unittest.TestCase):
             # Verify HTML tag replacement
             expected_html = f"src='{expected_path}'"
             self.assertIn(expected_html, new_text)
+
+class TestIsPureMermaid(unittest.TestCase):
+    def test_pure_mermaid(self):
+        self.assertTrue(is_pure_mermaid("```mermaid\ngraph\n```"))
+        self.assertTrue(is_pure_mermaid("~~~mermaid\ngraph\n~~~"))
+        self.assertTrue(is_pure_mermaid("   ```mermaid\ngraph\n```   "))
+        self.assertTrue(is_pure_mermaid("\n\n```mermaid\ngraph\n```\n"))
+
+    def test_not_pure_mermaid(self):
+        self.assertFalse(is_pure_mermaid("foo"))
+        self.assertFalse(is_pure_mermaid("```python\nprint('hi')\n```"))
+        self.assertFalse(is_pure_mermaid("```mermaid\ngraph\n```\nfoo"))
+        self.assertFalse(is_pure_mermaid("foo\n```mermaid\ngraph\n```"))
+        self.assertFalse(is_pure_mermaid("```mermaid")) # Unclosed
+        self.assertFalse(is_pure_mermaid(""))
+        self.assertFalse(is_pure_mermaid("   "))
 
 if __name__ == "__main__":
     unittest.main()
