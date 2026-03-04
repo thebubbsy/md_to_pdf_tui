@@ -5,3 +5,7 @@
 ## 2026-02-19 - Regex Compilation in Hot Path
 **Learning:** `sanitize_mermaid_code` recompiled regex patterns and redefined helper functions on every invocation. This was inefficient for documents with many mermaid blocks.
 **Action:** Moved regex patterns and helper functions to module level constants. Benchmarked ~14.6% improvement.
+
+## 2026-03-04 - [Async Worker Refactoring & I/O Optimization]
+**Learning:** Mixing synchronous I/O or CPU-heavy tasks in an async context (like Textual @work async methods) blocks the main event loop, causing UI stutters. Positional arguments in `run_in_executor` are risky for functions with many defaults (like `Path.mkdir`).
+**Action:** Refactor @work(thread=True) workers to async workers and offload all blocking calls (Path, tempfile, Image, create_html_content) to an executor using lambdas for safety and clarity.
