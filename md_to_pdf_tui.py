@@ -557,13 +557,28 @@ async def render_png_page(browser, md_path: Path, png_path: Path, settings: dict
         except: pass
 
 async def generate_png_core(md_path: Path, png_path: Path, settings: dict, log_fn=print, prog_fn=None, browser=None) -> None:
+    def _check_mermaid():
+        text = md_path.read_text("utf-8")
+        return bool(MERMAID_PATTERN.search(text))
+
+    try:
+        loop = asyncio.get_running_loop()
+        has_mermaid = await loop.run_in_executor(None, _check_mermaid)
+    except Exception as e:
+        if log_fn: log_fn(f"Error reading {md_path}: {e}")
+        return
+
+    if not has_mermaid:
+        if log_fn: log_fn(f"Skipping PNG generation: No Mermaid diagrams found in {md_path.name}")
+        return
+
     if browser:
         await render_png_page(browser, md_path, png_path, settings, log_fn, prog_fn)
     else:
         async with async_playwright() as p:
-            browser = await p.chromium.launch()
-            await render_png_page(browser, md_path, png_path, settings, log_fn, prog_fn)
-            await browser.close()
+            browser_instance = await p.chromium.launch()
+            await render_png_page(browser_instance, md_path, png_path, settings, log_fn, prog_fn)
+            await browser_instance.close()
 
 async def generate_docx_core(md_path: Path, docx_path: Path, log_fn=print, prog_fn=None, settings: dict=None) -> None:
     if log_fn: log_fn(f"Converting to DOCX: {md_path.name}")
@@ -803,6 +818,8 @@ if HAS_TEXTUAL:
         #editor-toolbar { height: 3; margin-bottom: 1; align: left middle; background: #21262d; padding-left: 1; }
         .tool-btn { min-width: 5; margin-right: 1; height: 1; background: #30363d; border: none; }
         .tool-btn:hover { background: #58a6ff; color: #161b22; }
+        .icon-btn { width: 5; min-width: 5; margin-left: 1; height: 1; background: #30363d; border: none; }
+        .icon-btn:hover { background: #58a6ff; color: #161b22; }
         """
         BINDINGS = [
             Binding("ctrl+o", "browse_file", "Browse"),
@@ -814,6 +831,17 @@ if HAS_TEXTUAL:
 
         def __init__(self, cli_file=None, paste_content=None):
             super().__init__(); self.cli_file = cli_file; self.paste_content = paste_content; self.settings = load_settings(); self.recent_files = load_recent_files(); self.last_output_path = None; self.use_paste_source = bool(paste_content)
+
+        def open_file_externally(self, path: Path):
+            try:
+                if sys.platform == "win32":
+                    os.startfile(str(path))
+                elif sys.platform == "darwin":
+                    subprocess.call(("open", str(path)))
+                else:
+                    subprocess.call(("xdg-open", str(path)))
+            except Exception as e:
+                self.notify(f"Failed to open: {e}", severity="error")
 
         def update_file_preview(self, filepath: str) -> None:
             try:
@@ -878,13 +906,16 @@ The file `{filepath}` could not be found.
                             with Horizontal(classes="row"):
                                 yield Label("Input:"); yield Input(id="md-input", placeholder="Select file or enter path..."); yield Button("Browse", id="browse-btn", tooltip="Select a Markdown file to convert")
                             with Horizontal(classes="row"):
-                                yield Label("Output Folder:"); yield Input(value=self.settings.get("output_folder", ""), id="out-input", placeholder="Leave empty to save alongside input file"); yield Button("Browse", id="browse-out-btn", tooltip="Select destination folder for generated files")
+                                yield Label("Output Folder:"); yield Input(value=self.settings.get("output_folder", ""), id="out-input", placeholder="Leave empty to save alongside input file"); yield Button("Browse", id="browse-out-btn", tooltip="Select destination folder for generated files"); yield Button("📂", id="btn-open-folder", classes="icon-btn", tooltip="Open Output Folder")
                             with Horizontal(classes="row"):
                                 yield Label("Use Paste:"); yield Switch(value=False, id="source-switch", tooltip="Toggle between file input and text editor")
                         with Container(classes="section"):
                             yield Static("🎨 AESTHETICS")
                             with Horizontal(classes="row"):
-                                yield Label("Theme:"); yield Select.from_values(list(THEMES.keys()), allow_blank=False, value=self.settings.get("theme", "GitHub Light"), id="theme-select", tooltip="Select color theme for PDF/DOCX output")
+                                yield Label("Theme:")
+                                theme_select = Select.from_values(list(THEMES.keys()), allow_blank=False, value=self.settings.get("theme", "GitHub Light"), id="theme-select")
+                                theme_select.tooltip = "Select color theme for PDF/DOCX output"
+                                yield theme_select
                         with Container(classes="section"):
                             yield Static("⚙️ OPTIONS")
                             with Horizontal(classes="row"):
@@ -1010,6 +1041,22 @@ The file `{filepath}` could not be found.
             elif event.button.id == "browse-out-btn":
                 d = open_folder_dialog()
                 if d: self.query_one("#out-input", Input).value = d
+            elif event.button.id == "btn-open-folder":
+                out_path = self.query_one("#out-input", Input).value.strip()
+                if not out_path:
+                    # Fallback to input file folder
+                    inp_path = self.query_one("#md-input", Input).value.strip()
+                    if inp_path:
+                        out_path = str(Path(inp_path).parent)
+                    else:
+                         # Fallback to Documents
+                         out_path = self.settings.get("output_folder", str(Path.home() / "Documents"))
+
+                if out_path and Path(out_path).exists():
+                     self.open_file_externally(Path(out_path))
+                else:
+                     self.notify(f"Folder not found: {out_path}", severity="error")
+
             elif event.button.id == "browser-preview-btn":
                 self.action_browser_preview()
             elif event.button.id == "tui-render-btn":
@@ -1060,7 +1107,8 @@ The file `{filepath}` could not be found.
             self.push_screen(HelpScreen())
 
         def action_open_pdf(self):
-            if self.last_output_path and self.last_output_path.exists(): os.startfile(str(self.last_output_path))
+            if self.last_output_path and self.last_output_path.exists():
+                self.open_file_externally(self.last_output_path)
 
         def action_browser_preview(self):
             content = ""
@@ -1217,7 +1265,14 @@ The file `{filepath}` could not be found.
             def log(m): self.call_from_thread(lambda: log_w.write(m))
             def prog(v): self.call_from_thread(lambda: self.query_one("#progress-bar", ProgressBar).update(progress=v))
             def enable_btn(): self.query_one("#open-btn", Button).disabled = False
+            def set_loading(state: bool):
+                try:
+                    self.query_one("#convert-btn", Button).loading = state
+                    self.query_one("#docx-btn", Button).loading = state
+                except Exception:
+                    pass
 
+            self.call_from_thread(lambda: set_loading(True))
             try:
                 if self.use_paste_source:
                     text_content = self.query_one("#paste-area", TextArea).text
@@ -1305,6 +1360,8 @@ The file `{filepath}` could not be found.
                     self.last_output_path = opath
                     self.call_from_thread(enable_btn)
             except Exception as e: log(f"[red]Error: {e}[/]")
+            finally:
+                self.call_from_thread(lambda: set_loading(False))
 
 async def run_gallery_mode(md_path: Path) -> None:
     print("--- Gallery Mode: Generating for all themes ---")

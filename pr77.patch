@@ -1,0 +1,47 @@
+diff --git a/.jules/bolt.md b/.jules/bolt.md
+index 78e7975..b90f76c 100644
+--- a/.jules/bolt.md
++++ b/.jules/bolt.md
+@@ -5,3 +5,6 @@
+ ## 2026-02-19 - Regex Compilation in Hot Path
+ **Learning:** `sanitize_mermaid_code` recompiled regex patterns and redefined helper functions on every invocation. This was inefficient for documents with many mermaid blocks.
+ **Action:** Moved regex patterns and helper functions to module level constants. Benchmarked ~14.6% improvement.
++## 2026-03-03 - Prevent Expensive Browser Launch on Missing Content
++**Learning:** Instantiating a headless browser (Playwright) takes significant time and resources. Generating PNGs for files without Mermaid diagrams was spending ~4.5s just to launch the browser, load the page, and realize there was no diagram to capture. Since the `generate_png_core` function is explicitly designed to only capture mermaid diagrams (it calls `element.screenshot()` on `.mermaid` only), launching the browser for files without them is a waste.
++**Action:** Always perform a cheap static check (e.g., regex search for the target content) before initiating expensive external processes. Offload file I/O and regex to a thread pool to avoid blocking the async event loop. Early returns for non-applicable states improve throughput massively.
+diff --git a/md_to_pdf_tui.py b/md_to_pdf_tui.py
+index d91fa9a..ef04dc2 100644
+--- a/md_to_pdf_tui.py
++++ b/md_to_pdf_tui.py
+@@ -557,13 +557,28 @@ async def render_png_page(browser, md_path: Path, png_path: Path, settings: dict
+         except: pass
+ 
+ async def generate_png_core(md_path: Path, png_path: Path, settings: dict, log_fn=print, prog_fn=None, browser=None) -> None:
++    def _check_mermaid():
++        text = md_path.read_text("utf-8")
++        return bool(MERMAID_PATTERN.search(text))
++
++    try:
++        loop = asyncio.get_running_loop()
++        has_mermaid = await loop.run_in_executor(None, _check_mermaid)
++    except Exception as e:
++        if log_fn: log_fn(f"Error reading {md_path}: {e}")
++        return
++
++    if not has_mermaid:
++        if log_fn: log_fn(f"Skipping PNG generation: No Mermaid diagrams found in {md_path.name}")
++        return
++
+     if browser:
+         await render_png_page(browser, md_path, png_path, settings, log_fn, prog_fn)
+     else:
+         async with async_playwright() as p:
+-            browser = await p.chromium.launch()
+-            await render_png_page(browser, md_path, png_path, settings, log_fn, prog_fn)
+-            await browser.close()
++            browser_instance = await p.chromium.launch()
++            await render_png_page(browser_instance, md_path, png_path, settings, log_fn, prog_fn)
++            await browser_instance.close()
+ 
+ async def generate_docx_core(md_path: Path, docx_path: Path, log_fn=print, prog_fn=None, settings: dict=None) -> None:
+     if log_fn: log_fn(f"Converting to DOCX: {md_path.name}")
