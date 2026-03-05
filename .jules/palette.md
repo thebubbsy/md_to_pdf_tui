@@ -21,3 +21,7 @@
 ## 2025-03-04 - Native Button Loading State in Textual
 **Learning:** Textual `Button` natively supports a `loading` property that replaces the button's label with a visual spinner. This provides immediate, built-in visual feedback for blocking async tasks (like PDF/DOCX generation via Playwright) without needing custom state management or extra widgets.
 **Action:** Always check if a widget has native properties (like `loading` or `tooltip`) to implement accessibility/UX feedback natively before building custom solutions. For background thread operations, always toggle this state using `self.call_from_thread` inside a `try...finally` block.
+
+## 2025-03-05 - Improved Modal Accessibility
+**Learning:** Textual modal dialogs (`ModalScreen`) should always include a `Footer` widget for key binding discovery and an explicit `Close` button for mouse users. Avoid applying `align: center middle` on containers with left-aligned text, as this causes ragged edges; instead, use `content-align: center middle` on specific centered elements.
+**Action:** When designing a `ModalScreen`, add a `Footer` to the composition, ensure at least one button correctly calls `self.dismiss()` (and traps the event using `event.stop()`), and style the layout by targeting individual components instead of the container wrapper.

@@ -784,8 +784,19 @@ if HAS_TEXTUAL:
     class HelpScreen(ModalScreen):
         BINDINGS = [Binding("escape", "dismiss", "Close"), Binding("f1", "dismiss", "Close")]
         def compose(self) -> ComposeResult:
-            yield Container(Static("[b]⌨️ Keyboard Shortcuts[/b]\n"), Static("[cyan]Ctrl+O[/] Browse\n[cyan]Ctrl+R[/] Convert\n[cyan]Ctrl+P[/] Open PDF\n[cyan]F1[/] Help"), Rule(), id="help-dialog")
-        CSS = "#help-dialog { width: 50; padding: 2; background: #1a1a1a; border: round #555; }"
+            yield Container(Static("[b]⌨️ Keyboard Shortcuts[/b]\n", id="help-title"), Static("[cyan]Ctrl+O[/] Browse\n[cyan]Ctrl+R[/] Convert PDF\n[cyan]Ctrl+D[/] Convert DOCX\n[cyan]Ctrl+P[/] Open PDF\n[cyan]F1[/] Help"), Rule(), Button("Close", id="dismiss-btn", variant="primary"), id="help-dialog")
+            yield Footer()
+
+        def on_button_pressed(self, event: Button.Pressed) -> None:
+            if event.button.id == "dismiss-btn":
+                self.dismiss()
+                event.stop()
+
+        CSS = """
+        #help-dialog { width: 50; padding: 2; background: #1a1a1a; border: round #555; }
+        #help-title { content-align: center middle; }
+        #dismiss-btn { width: 100%; margin-top: 1; }
+        """
 
     class MarkdownToPdfApp(App):
         CSS = """
