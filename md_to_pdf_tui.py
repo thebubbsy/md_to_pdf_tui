@@ -784,7 +784,14 @@ if HAS_TEXTUAL:
     class HelpScreen(ModalScreen):
         BINDINGS = [Binding("escape", "dismiss", "Close"), Binding("f1", "dismiss", "Close")]
         def compose(self) -> ComposeResult:
-            yield Container(Static("[b]⌨️ Keyboard Shortcuts[/b]\n"), Static("[cyan]Ctrl+O[/] Browse\n[cyan]Ctrl+R[/] Convert\n[cyan]Ctrl+P[/] Open PDF\n[cyan]F1[/] Help"), Rule(), id="help-dialog")
+            yield Container(Static("[b]⌨️ Keyboard Shortcuts[/b]\n"), Static("[cyan]Ctrl+O[/] Browse\n[cyan]Ctrl+R[/] Convert\n[cyan]Ctrl+P[/] Open PDF\n[cyan]F1[/] Help"), Rule(), Button("Close", id="close-help-btn", variant="primary"), id="help-dialog")
+            yield Footer()
+
+        def on_button_pressed(self, event: Button.Pressed) -> None:
+            if event.button.id == "close-help-btn":
+                self.dismiss()
+                event.stop()
+
         CSS = "#help-dialog { width: 50; padding: 2; background: #1a1a1a; border: round #555; }"
 
     class MarkdownToPdfApp(App):
@@ -884,7 +891,10 @@ The file `{filepath}` could not be found.
                         with Container(classes="section"):
                             yield Static("🎨 AESTHETICS")
                             with Horizontal(classes="row"):
-                                yield Label("Theme:"); yield Select.from_values(list(THEMES.keys()), allow_blank=False, value=self.settings.get("theme", "GitHub Light"), id="theme-select", tooltip="Select color theme for PDF/DOCX output")
+                                yield Label("Theme:")
+                                theme_select = Select.from_values(list(THEMES.keys()), allow_blank=False, value=self.settings.get("theme", "GitHub Light"), id="theme-select")
+                                theme_select.tooltip = "Select color theme for PDF/DOCX output"
+                                yield theme_select
                         with Container(classes="section"):
                             yield Static("⚙️ OPTIONS")
                             with Horizontal(classes="row"):

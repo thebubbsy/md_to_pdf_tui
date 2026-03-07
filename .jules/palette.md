@@ -21,3 +21,7 @@
 ## 2025-03-04 - Native Button Loading State in Textual
 **Learning:** Textual `Button` natively supports a `loading` property that replaces the button's label with a visual spinner. This provides immediate, built-in visual feedback for blocking async tasks (like PDF/DOCX generation via Playwright) without needing custom state management or extra widgets.
 **Action:** Always check if a widget has native properties (like `loading` or `tooltip`) to implement accessibility/UX feedback natively before building custom solutions. For background thread operations, always toggle this state using `self.call_from_thread` inside a `try...finally` block.
+
+## 2025-03-04 - The Trapped Mouse
+**Learning:** `ModalScreen`s with keyboard bindings (like "Escape to close") are inaccessible to mouse-only users if there isn't a visible "Close" button. In Textual, a `ModalScreen` also does not inherently reveal its bindings; the `Footer` widget must be explicitly yielded. Also, custom close buttons on Modals will bubble events to the parent App unless explicitly stopped, which can trigger unintended global handlers.
+**Action:** Always provide a visible "Close" button and yield a `Footer` widget on any `ModalScreen`. In the button handler, call `self.dismiss()` followed by `event.stop()` to ensure the event is consumed by the modal.
