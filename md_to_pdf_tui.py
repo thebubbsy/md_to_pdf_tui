@@ -547,7 +547,10 @@ async def render_png_page(browser, md_path: Path, png_path: Path, settings: dict
                 except: pass
             sys.exit(1)
 
-        await page.wait_for_timeout(2000) # Final stabilization
+        if has_mermaid:
+            # ⚡ Bolt: Only apply the 2000ms stabilization timeout when Mermaid diagrams are actually present.
+            # This skips an unnecessary 2-second sleep for standard documents, improving PNG generation speed.
+            await page.wait_for_timeout(2000) # Final stabilization
     except Exception as e:
         if log_fn: log_fn(f"Timeout or Error: {e}")
         # Check if it was a timeout but maybe it still rendered
@@ -1318,14 +1321,17 @@ The file `{filepath}` could not be found.
             def log(m): log_w.write(m)
             def prog(v): self.query_one("#progress-bar", ProgressBar).update(progress=v)
             def enable_btn(): self.query_one("#open-btn", Button).disabled = False
-            def set_loading(state: bool):
+            
+            btn_id = "#convert-btn" if fmt == "pdf" else "#docx-btn"
+            def toggle_loading(is_loading: bool):
                 try:
-                    self.query_one("#convert-btn", Button).loading = state
-                    self.query_one("#docx-btn", Button).loading = state
+                    btn = self.query_one(btn_id, Button)
+                    btn.loading = is_loading
                 except Exception:
                     pass
 
-            set_loading(True)
+            self.call_from_thread(lambda: toggle_loading(True))
+
             try:
                 if self.use_paste_source:
                     text_content = self.query_one("#paste-area", TextArea).text
@@ -1406,12 +1412,19 @@ The file `{filepath}` could not be found.
                         self.notify_user(f"Export Done: {opath.name}", title="Success")
 
                     self.last_output_path = opath
+<<<<<<< HEAD
                     enable_btn()
             except Exception as e:
                 log(f"[red]Error: {e}[/]")
                 self.notify_user(f"Error: {e}", title="Export Failed", severity="error")
             finally:
                 set_loading(False)
+=======
+                    self.call_from_thread(enable_btn)
+            except Exception as e: log(f"[red]Error: {e}[/]")
+            finally:
+                self.call_from_thread(lambda: toggle_loading(False))
+>>>>>>> bolt/optimize-png-generation-wait-7562170065164281893
 
 async def run_gallery_mode(md_path: Path) -> None:
     print("--- Gallery Mode: Generating for all themes ---")
