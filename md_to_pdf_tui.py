@@ -1412,19 +1412,12 @@ The file `{filepath}` could not be found.
                         self.notify_user(f"Export Done: {opath.name}", title="Success")
 
                     self.last_output_path = opath
-<<<<<<< HEAD
-                    enable_btn()
+                    self.call_from_thread(enable_btn)
             except Exception as e:
                 log(f"[red]Error: {e}[/]")
                 self.notify_user(f"Error: {e}", title="Export Failed", severity="error")
             finally:
-                set_loading(False)
-=======
-                    self.call_from_thread(enable_btn)
-            except Exception as e: log(f"[red]Error: {e}[/]")
-            finally:
                 self.call_from_thread(lambda: toggle_loading(False))
->>>>>>> bolt/optimize-png-generation-wait-7562170065164281893
 
 async def run_gallery_mode(md_path: Path) -> None:
     print("--- Gallery Mode: Generating for all themes ---")
