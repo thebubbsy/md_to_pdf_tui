@@ -530,7 +530,10 @@ async def render_png_page(browser, md_path: Path, png_path: Path, settings: dict
                 except: pass
             sys.exit(1)
 
-        await page.wait_for_timeout(2000) # Final stabilization
+        if has_mermaid:
+            # ⚡ Bolt: Only apply the 2000ms stabilization timeout when Mermaid diagrams are actually present.
+            # This skips an unnecessary 2-second sleep for standard documents, improving PNG generation speed.
+            await page.wait_for_timeout(2000) # Final stabilization
     except Exception as e:
         if log_fn: log_fn(f"Timeout or Error: {e}")
         # Check if it was a timeout but maybe it still rendered
