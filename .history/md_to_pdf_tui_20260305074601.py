@@ -1311,12 +1311,11 @@ The file `{filepath}` could not be found.
                  # For worker_render_tui, we MUST NOT delete the directory.
                  pass
 
-        @work(exclusive=True)
-        async def run_conversion(self, fmt="pdf") -> None:
-            loop = asyncio.get_running_loop()
+        @work(exclusive=True, thread=True)
+        def run_conversion(self, fmt="pdf") -> None:
             log_w = self.query_one("#log", RichLog)
-            def log(m): log_w.write(m)
-            def prog(v): self.query_one("#progress-bar", ProgressBar).update(progress=v)
+            def log(m): self.call_from_thread(lambda: log_w.write(m))
+            def prog(v): self.call_from_thread(lambda: self.query_one("#progress-bar", ProgressBar).update(progress=v))
             def enable_btn(): self.query_one("#open-btn", Button).disabled = False
             def set_loading(state: bool):
                 try:
@@ -1325,7 +1324,7 @@ The file `{filepath}` could not be found.
                 except Exception:
                     pass
 
-            set_loading(True)
+            self.call_from_thread(lambda: set_loading(True))
             try:
                 if self.use_paste_source:
                     text_content = self.query_one("#paste-area", TextArea).text
@@ -1343,75 +1342,84 @@ The file `{filepath}` could not be found.
                         out_dir = Path(out_dir_str)
                     else:
                         out_dir = Path(self.settings.get("output_folder", str(Path.home() / "Documents")))
-                    await loop.run_in_executor(None, lambda: out_dir.mkdir(parents=True, exist_ok=True))
+                    out_dir.mkdir(parents=True, exist_ok=True)
 
                     filename = f"pasted_export_{uuid.uuid4().hex[:8]}.{fmt}"
                     opath = out_dir / filename
 
                     # Create temp dir for resources
-                    temp_dir_str = await loop.run_in_executor(None, tempfile.mkdtemp)
-                    try:
-                        temp_path = Path(temp_dir_str)
+                    with tempfile.TemporaryDirectory() as temp_dir:
+                        temp_path = Path(temp_dir)
                         log(f"Processing resources in temporary env...")
-                        processed_text = await loop.run_in_executor(None, process_resources, text_content, temp_path)
+                        processed_text = process_resources(text_content, temp_path)
 
                         # Write processed markdown to temp file
                         tmp_md = temp_path / f"source_{uuid.uuid4()}.md"
-                        await loop.run_in_executor(None, lambda: tmp_md.write_text(processed_text, encoding="utf-8"))
+                        tmp_md.write_text(processed_text, encoding="utf-8")
 
                         ipath = tmp_md
 
                         if fmt == "docx":
-                            await generate_docx_core(ipath, opath, log, prog, settings=self.settings)
+                            loop = asyncio.new_event_loop()
+                            asyncio.set_event_loop(loop)
+                            loop.run_until_complete(generate_docx_core(ipath, opath, log, prog, settings=self.settings))
                             log(f"[green]✓ DOCX Export Done: {str(opath)}[/]")
                             self.notify_user(f"Export Done: {opath.name}", title="Success")
                         else:
+                            loop = asyncio.new_event_loop()
+                            asyncio.set_event_loop(loop)
                             # Check for pure mermaid
                             if is_pure_mermaid(processed_text) and fmt != "docx":
+                                # We can export to PNG if pure mermaid, but if user asked for PDF, give PDF.
+                                # However, user said "we can offer a png".
+                                # For now we stick to requested format.
                                 pass
 
-                            await generate_pdf_core(ipath, opath, self.settings, log, prog)
+                            loop.run_until_complete(generate_pdf_core(ipath, opath, self.settings, log, prog))
                             log(f"[green]✓ PDF Export Done: {str(opath)}[/]")
                             self.notify_user(f"Export Done: {opath.name}", title="Success")
 
                         self.last_output_path = opath
-                        enable_btn()
-                    finally:
-                        await loop.run_in_executor(None, shutil.rmtree, temp_dir_str)
+                        self.call_from_thread(enable_btn)
 
                 else:
                     inp = self.query_one("#md-input", Input).value.strip()
                     if not inp:
                         log("[yellow]⚠️  Please select a markdown file first![/]")
-                        self.query_one("#md-input", Input).focus()
+                        self.call_from_thread(self.query_one("#md-input", Input).focus)
                         return
-                    ipath = await loop.run_in_executor(None, lambda: Path(inp).resolve())
+                    ipath = Path(inp).resolve()
 
                     # Determine output path
                     out_dir_str = self.query_one("#out-input", Input).value.strip()
                     if out_dir_str:
                         out_dir = Path(out_dir_str)
-                        await loop.run_in_executor(None, lambda: out_dir.mkdir(parents=True, exist_ok=True))
+                        out_dir.mkdir(parents=True, exist_ok=True)
                         opath = out_dir / (ipath.stem + ("." + fmt))
                     else:
                         opath = ipath.with_suffix("." + fmt)
 
                     if fmt == "docx":
-                        await generate_docx_core(ipath, opath, log, prog, settings=self.settings)
+                        loop = asyncio.new_event_loop()
+                        asyncio.set_event_loop(loop)
+                        # Pass self.settings to ensure theme is used
+                        loop.run_until_complete(generate_docx_core(ipath, opath, log, prog, settings=self.settings))
                         log(f"[green]✓ DOCX Export Done: {str(opath)}[/]")
                         self.notify_user(f"Export Done: {opath.name}", title="Success")
                     else:
-                        await generate_pdf_core(ipath, opath, self.settings, log, prog)
+                        loop = asyncio.new_event_loop()
+                        asyncio.set_event_loop(loop)
+                        loop.run_until_complete(generate_pdf_core(ipath, opath, self.settings, log, prog))
                         log(f"[green]✓ PDF Export Done: {str(opath)}[/]")
                         self.notify_user(f"Export Done: {opath.name}", title="Success")
 
                     self.last_output_path = opath
-                    enable_btn()
+                    self.call_from_thread(enable_btn)
             except Exception as e:
                 log(f"[red]Error: {e}[/]")
                 self.notify_user(f"Error: {e}", title="Export Failed", severity="error")
             finally:
-                set_loading(False)
+                self.call_from_thread(lambda: set_loading(False))
 
 async def run_gallery_mode(md_path: Path) -> None:
     print("--- Gallery Mode: Generating for all themes ---")

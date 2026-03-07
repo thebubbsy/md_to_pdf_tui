@@ -1,0 +1,76 @@
+diff --git a/md_to_pdf_tui.py b/md_to_pdf_tui.py
+index d91fa9a..31404f6 100644
+--- a/md_to_pdf_tui.py
++++ b/md_to_pdf_tui.py
+@@ -784,8 +784,23 @@ async def generate_docx_core(md_path: Path, docx_path: Path, log_fn=print, prog_
+     class HelpScreen(ModalScreen):
+         BINDINGS = [Binding("escape", "dismiss", "Close"), Binding("f1", "dismiss", "Close")]
+         def compose(self) -> ComposeResult:
+-            yield Container(Static("[b]⌨️ Keyboard Shortcuts[/b]\n"), Static("[cyan]Ctrl+O[/] Browse\n[cyan]Ctrl+R[/] Convert\n[cyan]Ctrl+P[/] Open PDF\n[cyan]F1[/] Help"), Rule(), id="help-dialog")
+-        CSS = "#help-dialog { width: 50; padding: 2; background: #1a1a1a; border: round #555; }"
++            with Container(id="help-dialog"):
++                yield Static("[b]⌨️ Keyboard Shortcuts[/b]\n", classes="header")
++                yield Static("[cyan]Ctrl+O[/] Browse\n[cyan]Ctrl+R[/] Convert\n[cyan]Ctrl+P[/] Open PDF\n[cyan]F1[/] Help", classes="body")
++                yield Rule()
++                yield Button("Close", variant="primary", id="dismiss-btn")
++            yield Footer()
++
++        def on_button_pressed(self, event: Button.Pressed) -> None:
++            if event.button.id == "dismiss-btn":
++                self.dismiss()
++
++        CSS = """
++        #help-dialog { width: 60; height: auto; padding: 1 2; background: #1a1a1a; border: round #555; }
++        #help-dialog .header { text-align: center; margin-bottom: 1; }
++        #help-dialog .body { margin-bottom: 1; }
++        #dismiss-btn { width: 100%; margin-top: 1; }
++        """
+ 
+     class MarkdownToPdfApp(App):
+         CSS = """
+diff --git a/test_ui.py b/test_ui.py
+new file mode 100644
+index 0000000..4762a88
+--- /dev/null
++++ b/test_ui.py
+@@ -0,0 +1,40 @@
++
++import unittest
++from textual.app import App, ComposeResult
++from textual.widgets import Button, Footer
++from textual.pilot import Pilot
++import asyncio
++
++# Import the class to test
++try:
++    from md_to_pdf_tui import HelpScreen
++except ImportError:
++    # If dependencies are missing, this will fail
++    raise
++
++class TestHelpScreen(unittest.IsolatedAsyncioTestCase):
++    async def test_help_screen_structure(self):
++        class TestApp(App):
++            def compose(self) -> ComposeResult:
++                yield HelpScreen()
++
++        app = TestApp()
++        async with app.run_test() as pilot:
++            # Check for Footer
++            footer = pilot.app.query("Footer")
++            self.assertTrue(len(footer) > 0, "Footer should be present in HelpScreen")
++
++            # Check for Close button
++            close_btn = pilot.app.query("#dismiss-btn")
++            self.assertTrue(len(close_btn) > 0, "Close button (#dismiss-btn) should be present")
++
++            # Verify button properties
++            btn = close_btn.first()
++            self.assertEqual(str(btn.label), "Close")
++
++            # Simulate button press to ensure no crash (though dismissing modal in test app might be tricky)
++            await pilot.click("#dismiss-btn")
++            await pilot.pause()
++
++if __name__ == "__main__":
++    unittest.main()

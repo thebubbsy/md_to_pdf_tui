@@ -1,0 +1,72 @@
+diff --git a/md_to_pdf_tui.py b/md_to_pdf_tui.py
+index d91fa9a..4ed28a7 100644
+--- a/md_to_pdf_tui.py
++++ b/md_to_pdf_tui.py
+@@ -277,9 +277,26 @@ def is_pure_mermaid(text: str) -> bool:
+     """
+     Checks if the text contains only a mermaid block.
+     """
+-    stripped = text.strip()
+-    return (stripped.startswith("```mermaid") and stripped.endswith("```")) or \
+-           (stripped.startswith("~~~mermaid") and stripped.endswith("~~~"))
++    l = len(text)
++    start = 0
++    while start < l and text[start].isspace():
++        start += 1
++
++    if start == l:
++        return False
++
++    if text.startswith("```mermaid", start):
++        suffix = "```"
++    elif text.startswith("~~~mermaid", start):
++        suffix = "~~~"
++    else:
++        return False
++
++    end = l
++    while end > start and text[end-1].isspace():
++        end -= 1
++
++    return text.endswith(suffix, start, end)
+ 
+ # --- Core Conversion Logic (Decoupled from TUI) ---
+ # --- Core Conversion Logic (Decoupled from TUI) ---
+diff --git a/test_functionality.py b/test_functionality.py
+index 6e332a0..f129f55 100644
+--- a/test_functionality.py
++++ b/test_functionality.py
+@@ -1,10 +1,9 @@
+-
+ import unittest
+ import tempfile
+ import shutil
+ import os
+ from pathlib import Path
+-from md_to_pdf_tui import process_resources, sanitize_mermaid_code
++from md_to_pdf_tui import process_resources, sanitize_mermaid_code, is_pure_mermaid
+ 
+ class TestSanitizeMermaidCode(unittest.TestCase):
+     def test_basic_sanitize(self):
+@@ -67,5 +66,21 @@ def test_process_resources_local_images(self):
+             expected_html = f"src='{expected_path}'"
+             self.assertIn(expected_html, new_text)
+ 
++class TestIsPureMermaid(unittest.TestCase):
++    def test_pure_mermaid(self):
++        self.assertTrue(is_pure_mermaid("```mermaid\ngraph\n```"))
++        self.assertTrue(is_pure_mermaid("~~~mermaid\ngraph\n~~~"))
++        self.assertTrue(is_pure_mermaid("   ```mermaid\ngraph\n```   "))
++        self.assertTrue(is_pure_mermaid("\n\n```mermaid\ngraph\n```\n"))
++
++    def test_not_pure_mermaid(self):
++        self.assertFalse(is_pure_mermaid("foo"))
++        self.assertFalse(is_pure_mermaid("```python\nprint('hi')\n```"))
++        self.assertFalse(is_pure_mermaid("```mermaid\ngraph\n```\nfoo"))
++        self.assertFalse(is_pure_mermaid("foo\n```mermaid\ngraph\n```"))
++        self.assertFalse(is_pure_mermaid("```mermaid")) # Unclosed
++        self.assertFalse(is_pure_mermaid(""))
++        self.assertFalse(is_pure_mermaid("   "))
++
+ if __name__ == "__main__":
+     unittest.main()

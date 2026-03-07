@@ -1175,17 +1175,15 @@ The file `{filepath}` could not be found.
 
             self.worker_browser_preview(content)
 
-        @work
-        async def worker_browser_preview(self, content: str):
-             loop = asyncio.get_running_loop()
-             temp_dir_str = await loop.run_in_executor(None, tempfile.mkdtemp)
+        @work(thread=True)
+        def worker_browser_preview(self, content: str):
              try:
-                temp_dir = Path(temp_dir_str)
-                processed_content = await loop.run_in_executor(None, process_resources, content, temp_dir)
-                html = await loop.run_in_executor(None, create_html_content, processed_content, self.settings)
+                temp_dir = Path(tempfile.mkdtemp())
+                processed_content = process_resources(content, temp_dir)
+                html = create_html_content(processed_content, self.settings)
                 preview_path = temp_dir / "preview.html"
-                await loop.run_in_executor(None, lambda: preview_path.write_text(html, encoding="utf-8"))
-                await loop.run_in_executor(None, lambda: webbrowser.open(f"file://{preview_path.resolve()}"))
+                preview_path.write_text(html, encoding="utf-8")
+                webbrowser.open(f"file://{preview_path.resolve()}")
                 self.notify_user("Browser preview opened.", title="Preview", severity="information")
              except Exception as e:
                 self.notify_user(f"Preview Error: {e}", title="Error", severity="error")
@@ -1221,26 +1219,24 @@ The file `{filepath}` could not be found.
 
             self.worker_render_tui(content)
 
-        @work
-        async def worker_render_tui(self, content: str):
-             loop = asyncio.get_running_loop()
-             temp_dir_str = await loop.run_in_executor(None, tempfile.mkdtemp)
+        @work(thread=True)
+        def worker_render_tui(self, content: str):
              try:
-                temp_dir = Path(temp_dir_str)
-                processed_content = await loop.run_in_executor(None, process_resources, content, temp_dir)
+                temp_dir = Path(tempfile.mkdtemp())
+                processed_content = process_resources(content, temp_dir)
 
                 # Identify mermaid blocks
-                parts = await loop.run_in_executor(None, MERMAID_PATTERN.split, processed_content)
+                parts = MERMAID_PATTERN.split(processed_content)
 
                 # If only 1 part, no mermaid
                 if len(parts) < 2:
-                    self.query_one("#log", RichLog).write("[yellow]No mermaid blocks found to render.[/]")
+                    self.call_from_thread(lambda: self.query_one("#log", RichLog).write("[yellow]No mermaid blocks found to render.[/]"))
                     return
 
                 # Render ALL to get images
-                html = await loop.run_in_executor(None, create_html_content, processed_content, self.settings)
+                html = create_html_content(processed_content, self.settings)
                 tmp_h = temp_dir / "render.html"
-                await loop.run_in_executor(None, lambda: tmp_h.write_text(html, encoding="utf-8"))
+                tmp_h.write_text(html, encoding="utf-8")
 
                 images = []
 
@@ -1262,61 +1258,60 @@ The file `{filepath}` could not be found.
                             images.append(p)
                         await browser.close()
 
-                await capture()
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                loop.run_until_complete(capture())
 
-                container = self.query_one("#md-view", VerticalScroll)
-                container.remove_children()
+                def update_ui():
+                    container = self.query_one("#md-view", VerticalScroll)
+                    container.remove_children()
 
-                img_idx = 0
-                for i, part in enumerate(parts):
-                    if i % 2 == 0:
-                        # Text
-                        if part.strip():
-                            container.mount(Markdown(part))
-                    else:
-                        # Mermaid Code - replace with image if available
-                        if img_idx < len(images):
-                            img_path = images[img_idx]
-                            try:
-                                img = await loop.run_in_executor(None, Image.open, img_path)
-
-                                # Calculate resize dimensions to fit in terminal
-                                # Get available width (console width - padding)
-                                console_width = self.app.console.size.width
-                                max_width = max(40, console_width - 10) # 10 chars padding
-
-                                w, h = img.size
-                                aspect = h / w
-
-                                target_w = max_width
-                                target_h = int(target_w * aspect)
-
-                                await loop.run_in_executor(None, lambda: img.thumbnail((target_w, target_h * 2), Image.Resampling.LANCZOS))
-                                pix = await loop.run_in_executor(None, Pixels.from_image, img)
-
-                                container.mount(Center(Static(pix)))
-                                img_idx += 1
-                            except Exception as e:
-                                container.mount(Static(f"[red]Error loading image: {e}[/]"))
+                    img_idx = 0
+                    for i, part in enumerate(parts):
+                        if i % 2 == 0:
+                            # Text
+                            if part.strip():
+                                container.mount(Markdown(part))
                         else:
-                            container.mount(Static("[red]Image missing[/]"))
+                            # Mermaid Code - replace with image if available
+                            if img_idx < len(images):
+                                img_path = images[img_idx]
+                                try:
+                                    img = Image.open(img_path)
 
-                self.notify_user("TUI Render Complete!", title="Render", severity="information")
+                                    # Calculate resize dimensions to fit in terminal
+                                    # Get available width (console width - padding)
+                                    console_width = self.app.console.size.width
+                                    max_width = max(40, console_width - 10) # 10 chars padding
+
+                                    w, h = img.size
+                                    aspect = h / w
+
+                                    target_w = max_width
+                                    target_h = int(target_w * aspect)
+
+                                    img.thumbnail((target_w, target_h * 2), Image.Resampling.LANCZOS)
+                                    pix = Pixels.from_image(img)
+
+                                    container.mount(Center(Static(pix)))
+                                    img_idx += 1
+                                except Exception as e:
+                                    container.mount(Static(f"[red]Error loading image: {e}[/]"))
+                            else:
+                                container.mount(Static("[red]Image missing[/]"))
+
+                    self.notify_user("TUI Render Complete!", title="Render", severity="information")
+
+                self.call_from_thread(update_ui)
 
              except Exception as e:
                 self.notify_user(f"TUI Render Error: {e}", title="Error", severity="error")
-             finally:
-                 # Note: Ideally we cleanup temp_dir, but we are using images in the UI
-                 # If we delete temp_dir, images will vanish from the Preview.
-                 # For worker_render_tui, we MUST NOT delete the directory.
-                 pass
 
-        @work(exclusive=True)
-        async def run_conversion(self, fmt="pdf") -> None:
-            loop = asyncio.get_running_loop()
+        @work(exclusive=True, thread=True)
+        def run_conversion(self, fmt="pdf") -> None:
             log_w = self.query_one("#log", RichLog)
-            def log(m): log_w.write(m)
-            def prog(v): self.query_one("#progress-bar", ProgressBar).update(progress=v)
+            def log(m): self.call_from_thread(lambda: log_w.write(m))
+            def prog(v): self.call_from_thread(lambda: self.query_one("#progress-bar", ProgressBar).update(progress=v))
             def enable_btn(): self.query_one("#open-btn", Button).disabled = False
             def set_loading(state: bool):
                 try:
@@ -1325,7 +1320,7 @@ The file `{filepath}` could not be found.
                 except Exception:
                     pass
 
-            set_loading(True)
+            self.call_from_thread(lambda: set_loading(True))
             try:
                 if self.use_paste_source:
                     text_content = self.query_one("#paste-area", TextArea).text
@@ -1343,75 +1338,84 @@ The file `{filepath}` could not be found.
                         out_dir = Path(out_dir_str)
                     else:
                         out_dir = Path(self.settings.get("output_folder", str(Path.home() / "Documents")))
-                    await loop.run_in_executor(None, lambda: out_dir.mkdir(parents=True, exist_ok=True))
+                    out_dir.mkdir(parents=True, exist_ok=True)
 
                     filename = f"pasted_export_{uuid.uuid4().hex[:8]}.{fmt}"
                     opath = out_dir / filename
 
                     # Create temp dir for resources
-                    temp_dir_str = await loop.run_in_executor(None, tempfile.mkdtemp)
-                    try:
-                        temp_path = Path(temp_dir_str)
+                    with tempfile.TemporaryDirectory() as temp_dir:
+                        temp_path = Path(temp_dir)
                         log(f"Processing resources in temporary env...")
-                        processed_text = await loop.run_in_executor(None, process_resources, text_content, temp_path)
+                        processed_text = process_resources(text_content, temp_path)
 
                         # Write processed markdown to temp file
                         tmp_md = temp_path / f"source_{uuid.uuid4()}.md"
-                        await loop.run_in_executor(None, lambda: tmp_md.write_text(processed_text, encoding="utf-8"))
+                        tmp_md.write_text(processed_text, encoding="utf-8")
 
                         ipath = tmp_md
 
                         if fmt == "docx":
-                            await generate_docx_core(ipath, opath, log, prog, settings=self.settings)
+                            loop = asyncio.new_event_loop()
+                            asyncio.set_event_loop(loop)
+                            loop.run_until_complete(generate_docx_core(ipath, opath, log, prog, settings=self.settings))
                             log(f"[green]✓ DOCX Export Done: {str(opath)}[/]")
                             self.notify_user(f"Export Done: {opath.name}", title="Success")
                         else:
+                            loop = asyncio.new_event_loop()
+                            asyncio.set_event_loop(loop)
                             # Check for pure mermaid
                             if is_pure_mermaid(processed_text) and fmt != "docx":
+                                # We can export to PNG if pure mermaid, but if user asked for PDF, give PDF.
+                                # However, user said "we can offer a png".
+                                # For now we stick to requested format.
                                 pass
 
-                            await generate_pdf_core(ipath, opath, self.settings, log, prog)
+                            loop.run_until_complete(generate_pdf_core(ipath, opath, self.settings, log, prog))
                             log(f"[green]✓ PDF Export Done: {str(opath)}[/]")
                             self.notify_user(f"Export Done: {opath.name}", title="Success")
 
                         self.last_output_path = opath
-                        enable_btn()
-                    finally:
-                        await loop.run_in_executor(None, shutil.rmtree, temp_dir_str)
+                        self.call_from_thread(enable_btn)
 
                 else:
                     inp = self.query_one("#md-input", Input).value.strip()
                     if not inp:
                         log("[yellow]⚠️  Please select a markdown file first![/]")
-                        self.query_one("#md-input", Input).focus()
+                        self.call_from_thread(self.query_one("#md-input", Input).focus)
                         return
-                    ipath = await loop.run_in_executor(None, lambda: Path(inp).resolve())
+                    ipath = Path(inp).resolve()
 
                     # Determine output path
                     out_dir_str = self.query_one("#out-input", Input).value.strip()
                     if out_dir_str:
                         out_dir = Path(out_dir_str)
-                        await loop.run_in_executor(None, lambda: out_dir.mkdir(parents=True, exist_ok=True))
+                        out_dir.mkdir(parents=True, exist_ok=True)
                         opath = out_dir / (ipath.stem + ("." + fmt))
                     else:
                         opath = ipath.with_suffix("." + fmt)
 
                     if fmt == "docx":
-                        await generate_docx_core(ipath, opath, log, prog, settings=self.settings)
+                        loop = asyncio.new_event_loop()
+                        asyncio.set_event_loop(loop)
+                        # Pass self.settings to ensure theme is used
+                        loop.run_until_complete(generate_docx_core(ipath, opath, log, prog, settings=self.settings))
                         log(f"[green]✓ DOCX Export Done: {str(opath)}[/]")
                         self.notify_user(f"Export Done: {opath.name}", title="Success")
                     else:
-                        await generate_pdf_core(ipath, opath, self.settings, log, prog)
+                        loop = asyncio.new_event_loop()
+                        asyncio.set_event_loop(loop)
+                        loop.run_until_complete(generate_pdf_core(ipath, opath, self.settings, log, prog))
                         log(f"[green]✓ PDF Export Done: {str(opath)}[/]")
                         self.notify_user(f"Export Done: {opath.name}", title="Success")
 
                     self.last_output_path = opath
-                    enable_btn()
+                    self.call_from_thread(enable_btn)
             except Exception as e:
                 log(f"[red]Error: {e}[/]")
                 self.notify_user(f"Error: {e}", title="Export Failed", severity="error")
             finally:
-                set_loading(False)
+                self.call_from_thread(lambda: set_loading(False))
 
 async def run_gallery_mode(md_path: Path) -> None:
     print("--- Gallery Mode: Generating for all themes ---")
