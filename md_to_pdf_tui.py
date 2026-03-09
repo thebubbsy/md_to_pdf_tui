@@ -327,6 +327,37 @@ def sanitize_mermaid_code(code: str) -> str:
 _MD_PARSER = None
 _PANDOC_AVAILABLE = None
 
+_playwright_instance = None
+_browser_instance = None
+
+async def _get_browser():
+    """
+    ⚡ Bolt: Performance optimization to reuse the Playwright browser instance.
+    Launching a headless Chromium browser takes ~1-2s per document. By keeping a singleton
+    instance alive during the application's lifecycle, we eliminate this startup latency
+    for subsequent PDF/PNG/DOCX generations, improving batch and repeated export speeds.
+    """
+    global _playwright_instance, _browser_instance
+    if _browser_instance is None:
+        _playwright_instance = await async_playwright().start()
+        _browser_instance = await _playwright_instance.chromium.launch()
+
+        # Register exit handler to clean up the browser process
+        import atexit
+        def _cleanup_browser():
+            import asyncio
+            try:
+                loop = asyncio.get_event_loop()
+                if loop.is_running():
+                    loop.create_task(_playwright_instance.stop())
+                else:
+                    loop.run_until_complete(_playwright_instance.stop())
+            except Exception:
+                pass
+        atexit.register(_cleanup_browser)
+
+    return _browser_instance
+
 def _get_md_parser():
     global _MD_PARSER
     if _MD_PARSER is None:
@@ -396,7 +427,7 @@ th {{ background: {t_data['code']}; font-weight: bold; }}
 .mermaid-error {{ background: #fee2e2 !important; color: #991b1b !important; border: 2px solid #ef4444 !important; padding: 20px !important; margin: 20px 0 !important; font-family: monospace !important; border-radius: 8px !important; white-space: pre-wrap !important; }}
 </style></head><body><div id="canvas">{body}</div></body></html>'''
 
-async def generate_pdf_core(md_path: Path, pdf_path: Path, settings: dict, log_fn=print, prog_fn=None) -> None:
+async def generate_pdf_core(md_path: Path, pdf_path: Path, settings: dict, log_fn=print, prog_fn=None, browser=None) -> None:
     u_height = settings.get("unlimited_height", True)
     a4_width = settings.get("a4_fixed_width", True)
     theme_name = settings.get("theme", "GitHub Light")
@@ -415,10 +446,9 @@ async def generate_pdf_core(md_path: Path, pdf_path: Path, settings: dict, log_f
     await asyncio.get_running_loop().run_in_executor(None, lambda: tmp_h.write_text(html_content, encoding="utf-8"))
     if prog_fn: prog_fn(40)
     
-    async with async_playwright() as p:
-        browser = await p.chromium.launch()
+    async def render_pdf_page(browser_inst):
         v_w = 800 if a4_width else 1200
-        page = await browser.new_page(viewport={"width": v_w, "height": 1000})
+        page = await browser_inst.new_page(viewport={"width": v_w, "height": 1000})
         abs_url = f"file:///{str(tmp_h.resolve()).replace(os.sep, '/')}"
         # using 'load' instead of 'networkidle' saves ~500ms per PDF
         await page.goto(abs_url, wait_until="load")
@@ -464,8 +494,14 @@ async def generate_pdf_core(md_path: Path, pdf_path: Path, settings: dict, log_f
             opts["format"] = "A4"; opts["margin"] = {"top": "1cm", "bottom": "1cm", "left": "1cm", "right": "1cm"}
         
         await page.pdf(**opts)
-        await browser.close()
-    
+        await page.close()
+
+    if browser:
+        await render_pdf_page(browser)
+    else:
+        browser_instance = await _get_browser()
+        await render_pdf_page(browser_instance)
+
     if not settings.get("save_html", False): 
         try: os.remove(tmp_h)
         except: pass
@@ -595,12 +631,10 @@ async def generate_png_core(md_path: Path, png_path: Path, settings: dict, log_f
     if browser:
         await render_png_page(browser, md_path, png_path, settings, log_fn, prog_fn)
     else:
-        async with async_playwright() as p:
-            browser_instance = await p.chromium.launch()
-            await render_png_page(browser_instance, md_path, png_path, settings, log_fn, prog_fn)
-            await browser_instance.close()
+        browser_instance = await _get_browser()
+        await render_png_page(browser_instance, md_path, png_path, settings, log_fn, prog_fn)
 
-async def generate_docx_core(md_path: Path, docx_path: Path, log_fn=print, prog_fn=None, settings: dict=None) -> None:
+async def generate_docx_core(md_path: Path, docx_path: Path, log_fn=print, prog_fn=None, settings: dict=None, browser=None) -> None:
     if log_fn: log_fn(f"Converting to DOCX: {md_path.name}")
     if prog_fn: prog_fn(10)
     
@@ -732,9 +766,8 @@ async def generate_docx_core(md_path: Path, docx_path: Path, log_fn=print, prog_
         with open(tmp_h, "w", encoding="utf-8") as f:
             f.write(html_content)
             
-        async with async_playwright() as p:
-            browser = await p.chromium.launch()
-            page = await browser.new_page(device_scale_factor=2) # Higher DPI for docs
+        async def render_docx_page(browser_inst):
+            page = await browser_inst.new_page(device_scale_factor=2) # Higher DPI for docs
             abs_url = f"file:///{str(tmp_h.resolve()).replace(os.sep, '/')}"
             await page.goto(abs_url, wait_until="load")
             
@@ -773,8 +806,13 @@ async def generate_docx_core(md_path: Path, docx_path: Path, log_fn=print, prog_
                          if log_fn: log_fn(f"Failed to save diagram png: {e}")
 
                  if log_fn: log_fn(f"Captured diagram {i+1}")
+            await page.close()
 
-            await browser.close()
+        if browser:
+            await render_docx_page(browser)
+        else:
+            browser_instance = await _get_browser()
+            await render_docx_page(browser_instance)
             
         # Replace blocks in MD text with images
         # Do it in reverse order to not mess up indices
@@ -1248,22 +1286,21 @@ The file `{filepath}` could not be found.
                 images = []
 
                 async def capture():
-                     async with async_playwright() as p:
-                        browser = await p.chromium.launch()
-                        page = await browser.new_page(device_scale_factor=2)
-                        await page.goto(f"file://{tmp_h.resolve()}", wait_until="load")
+                     browser = await _get_browser()
+                     page = await browser.new_page(device_scale_factor=2)
+                     await page.goto(f"file://{tmp_h.resolve()}", wait_until="load")
 
-                        try:
-                            await page.wait_for_selector(".mermaid svg", timeout=5000)
-                            await page.wait_for_timeout(500)
-                        except: pass
+                     try:
+                         await page.wait_for_selector(".mermaid svg", timeout=5000)
+                         await page.wait_for_timeout(500)
+                     except: pass
 
-                        elements = await page.locator(".mermaid").all()
-                        for i, el in enumerate(elements):
-                            p = temp_dir / f"diag_{i}.png"
-                            await el.screenshot(path=str(p))
-                            images.append(p)
-                        await browser.close()
+                     elements = await page.locator(".mermaid").all()
+                     for i, el in enumerate(elements):
+                         p = temp_dir / f"diag_{i}.png"
+                         await el.screenshot(path=str(p))
+                         images.append(p)
+                     await page.close()
 
                 await capture()
 
