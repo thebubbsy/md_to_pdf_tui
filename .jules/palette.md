@@ -21,3 +21,7 @@
 ## 2025-03-04 - Native Button Loading State in Textual
 **Learning:** Textual `Button` natively supports a `loading` property that replaces the button's label with a visual spinner. This provides immediate, built-in visual feedback for blocking async tasks (like PDF/DOCX generation via Playwright) without needing custom state management or extra widgets.
 **Action:** Always check if a widget has native properties (like `loading` or `tooltip`) to implement accessibility/UX feedback natively before building custom solutions. For background thread operations, always toggle this state using `self.call_from_thread` inside a `try...finally` block.
+
+## 2024-05-24 - Async Task Visual Feedback
+**Learning:** Textual background workers `@work` should toggle native component loading states (`button.loading = True/False`) using `call_from_thread` rather than leaving the UI seemingly frozen during execution.
+**Action:** When implementing heavy background rendering tasks in Textual, proactively manage interactive component loading states in the caller and handle state restoration cleanly within the worker's `finally` block to guarantee robust reset regardless of exceptions.

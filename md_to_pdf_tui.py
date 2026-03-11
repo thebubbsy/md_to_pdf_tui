@@ -989,10 +989,10 @@ The file `{filepath}` could not be found.
                         yield Button("H3", id="btn-h3", classes="tool-btn", tooltip="Heading 3 (### text)")
 
                     with Horizontal(id="preview-controls"):
-                         yield Button("👁️ TUI Preview", id="toggle-view-btn", disabled=True, variant="primary")
-                         yield Button("🌐 Browser Preview", id="browser-preview-btn", variant="default")
+                         yield Button("👁️ TUI Preview", id="toggle-view-btn", disabled=True, variant="primary", tooltip="Preview markdown in terminal")
+                         yield Button("🌐 Browser Preview", id="browser-preview-btn", variant="default", tooltip="Open markdown in browser")
                          if HAS_PIXELS:
-                             yield Button("🖼️ Render Graphs", id="tui-render-btn", variant="default")
+                             yield Button("🖼️ Render Graphs", id="tui-render-btn", variant="default", tooltip="Render Mermaid graphs in terminal")
                     with ContentSwitcher(initial="md-view", id="preview-switcher"):
                         with VerticalScroll(id="md-view"):
                             yield Markdown(id="md-preview")
@@ -1176,6 +1176,7 @@ The file `{filepath}` could not be found.
                 self.query_one("#log", RichLog).write("[yellow]Nothing to preview.[/]")
                 return
 
+            self.call_from_thread(lambda: setattr(self.query_one("#browser-preview-btn", Button), "loading", True))
             self.worker_browser_preview(content)
 
         @work
@@ -1192,6 +1193,8 @@ The file `{filepath}` could not be found.
                 self.notify_user("Browser preview opened.", title="Preview", severity="information")
              except Exception as e:
                 self.notify_user(f"Preview Error: {e}", title="Error", severity="error")
+             finally:
+                self.call_from_thread(lambda: setattr(self.query_one("#browser-preview-btn", Button), "loading", False))
 
         def action_render_tui(self):
             content = ""
@@ -1222,6 +1225,8 @@ The file `{filepath}` could not be found.
                 self.query_one("#toggle-view-btn", Button).label = "✏️ Back to Edit"
                 self.query_one("#toggle-view-btn", Button).variant = "default"
 
+            if HAS_PIXELS:
+                self.call_from_thread(lambda: setattr(self.query_one("#tui-render-btn", Button), "loading", True))
             self.worker_render_tui(content)
 
         @work
@@ -1309,6 +1314,8 @@ The file `{filepath}` could not be found.
              except Exception as e:
                 self.notify_user(f"TUI Render Error: {e}", title="Error", severity="error")
              finally:
+                 if HAS_PIXELS:
+                     self.call_from_thread(lambda: setattr(self.query_one("#tui-render-btn", Button), "loading", False))
                  # Note: Ideally we cleanup temp_dir, but we are using images in the UI
                  # If we delete temp_dir, images will vanish from the Preview.
                  # For worker_render_tui, we MUST NOT delete the directory.
