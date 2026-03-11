@@ -652,65 +652,68 @@ async def generate_docx_core(md_path: Path, docx_path: Path, log_fn=print, prog_
     # --- PROCESS ALERTS ---
     # Regex to capture > [!TYPE] ... content ...
     # We iterate line by line to handle the quote blocks correctly
-    lines = md_text.split('\n')
-    processed_lines = []
-    in_alert = False
-    alert_type = None
-    alert_content = []
+    # ⚡ Bolt: Fast-path optimization to bypass line-by-line processing entirely if there are no alerts.
+    # This saves significant time (O(n) array operations) for typical documents without alerts.
+    if "[!" in md_text and re.search(r"^\s*>\s*\[!", md_text, re.MULTILINE):
+        lines = md_text.split('\n')
+        processed_lines = []
+        in_alert = False
+        alert_type = None
+        alert_content = []
 
-    for line in lines:
-        # Optimization: fast skip for non-alert lines
-        if not in_alert and '>' not in line:
-            processed_lines.append(line)
-            continue
-
-        # Check for alert header with flexible whitespace
-        # matches: > [!NOTE],   > [!NOTE], >[!NOTE]
-        match = ALERT_PATTERN.match(line)
-        if match:
-            # If we were already in an alert, close it first
-            if in_alert:
-                style = alert_styles.get(alert_type.upper(), alert_styles["NOTE"])
-                c_html = "<br/>".join(alert_content)
-                html_table = f'<table style="width:100%; border-left: 5px solid {style["color"]}; background-color: {style["bg"]}; margin-bottom: 10px;"><tr><td style="padding: 10px;"><strong>{style["icon"]} {alert_type.upper()} - </strong><br/>{c_html}</td></tr></table>'
-                processed_lines.append(html_table)
-                processed_lines.append("") # Ensure separation
-                alert_content = []
-            
-            in_alert = True
-            alert_type = match.group(1).upper()
-            continue
-            
-        if in_alert:
-            # Check if line continues the blockquote
-            if line.strip().startswith(">"):
-                # Remove the first > and stripping leading spaces
-                # Be careful not to strip too much indentation from content
-                content = line.strip()[1:]
-                if content.startswith(" "): content = content[1:]
-                alert_content.append(content)
-            else:
-                # End of alert block
-                style = alert_styles.get(alert_type.upper(), alert_styles["NOTE"])
-                c_html = "<br/>".join(alert_content)
-                html_table = f'<table style="width:100%; border-left: 5px solid {style["color"]}; background-color: {style["bg"]}; margin-bottom: 10px;"><tr><td style="padding: 10px; color: {t["txt"]};"><strong>{style["icon"]} {alert_type.upper()} - </strong><br/>{c_html}</td></tr></table>'
-                processed_lines.append(html_table)
-                processed_lines.append("") # Spacer
-                in_alert = False
-                alert_content = []
+        for line in lines:
+            # Optimization: fast skip for non-alert lines
+            if not in_alert and '>' not in line:
                 processed_lines.append(line)
-        else:
-            processed_lines.append(line)
+                continue
+
+            # Check for alert header with flexible whitespace
+            # matches: > [!NOTE],   > [!NOTE], >[!NOTE]
+            match = ALERT_PATTERN.match(line)
+            if match:
+                # If we were already in an alert, close it first
+                if in_alert:
+                    style = alert_styles.get(alert_type.upper(), alert_styles["NOTE"])
+                    c_html = "<br/>".join(alert_content)
+                    html_table = f'<table style="width:100%; border-left: 5px solid {style["color"]}; background-color: {style["bg"]}; margin-bottom: 10px;"><tr><td style="padding: 10px;"><strong>{style["icon"]} {alert_type.upper()} - </strong><br/>{c_html}</td></tr></table>'
+                    processed_lines.append(html_table)
+                    processed_lines.append("") # Ensure separation
+                    alert_content = []
+
+                in_alert = True
+                alert_type = match.group(1).upper()
+                continue
+
+            if in_alert:
+                # Check if line continues the blockquote
+                if line.strip().startswith(">"):
+                    # Remove the first > and stripping leading spaces
+                    # Be careful not to strip too much indentation from content
+                    content = line.strip()[1:]
+                    if content.startswith(" "): content = content[1:]
+                    alert_content.append(content)
+                else:
+                    # End of alert block
+                    style = alert_styles.get(alert_type.upper(), alert_styles["NOTE"])
+                    c_html = "<br/>".join(alert_content)
+                    html_table = f'<table style="width:100%; border-left: 5px solid {style["color"]}; background-color: {style["bg"]}; margin-bottom: 10px;"><tr><td style="padding: 10px; color: {t["txt"]};"><strong>{style["icon"]} {alert_type.upper()} - </strong><br/>{c_html}</td></tr></table>'
+                    processed_lines.append(html_table)
+                    processed_lines.append("") # Spacer
+                    in_alert = False
+                    alert_content = []
+                    processed_lines.append(line)
+            else:
+                processed_lines.append(line)
+
+        # Flush pending alert at end of file
+        if in_alert:
+            style = alert_styles.get(alert_type.upper(), alert_styles["NOTE"])
+            c_html = "<br/>".join(alert_content)
+            html_table = f'<table style="width:100%; border-left: 5px solid {style["color"]}; background-color: {style["bg"]}; margin-bottom: 10px;"><tr><td style="padding: 10px; color: {t["txt"]};"><strong>{style["icon"]} {alert_type.upper()} - </strong><br/>{c_html}</td></tr></table>'
+            processed_lines.append(html_table)
+            processed_lines.append("")
             
-    # Flush pending alert at end of file
-    if in_alert:
-        style = alert_styles.get(alert_type.upper(), alert_styles["NOTE"])
-        c_html = "<br/>".join(alert_content)
-        html_table = f'<table style="width:100%; border-left: 5px solid {style["color"]}; background-color: {style["bg"]}; margin-bottom: 10px;"><tr><td style="padding: 10px; color: {t["txt"]};"><strong>{style["icon"]} {alert_type.upper()} - </strong><br/>{c_html}</td></tr></table>'
-        processed_lines.append(html_table)
-        processed_lines.append("")
-        
-    md_text = "\n".join(processed_lines)
+        md_text = "\n".join(processed_lines)
     
     mermaid_blocks = list(MERMAID_PATTERN.finditer(md_text))
     
