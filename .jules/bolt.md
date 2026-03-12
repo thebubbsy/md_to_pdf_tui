@@ -12,3 +12,7 @@
 ## 2026-03-05 - Concurrent Gallery Mode Race Condition
 **Learning:** Running headless browser pages concurrently using `asyncio.gather` requires that shared temporary files (like `.tmp.html`) are uniquely named (e.g., via `uuid`). Otherwise, tasks overwrite each other's HTML files, leading to incorrect screenshots or silent failures.
 **Action:** When parallelizing browser tasks, ensure all intermediate file I/O uses unique, non-overlapping paths.
+
+## 2026-03-05 - Optimize DOM queries for Playwright waiting logic
+**Learning:** Checking for elements in the DOM using `document.querySelectorAll` forces the browser to scan the entire DOM and construct a static NodeList, even if we only care if elements exist or are fully processed. In the context of waiting for Mermaid diagram processing (`wait_for_function`), calculating `(processed.length + error.length) === all.length` with three separate `querySelectorAll` calls is computationally expensive, especially since it's evaluated continuously inside Playwright's `wait_for_function` until truthy.
+**Action:** Replaced multiple `querySelectorAll` calls with a single `document.querySelector('.mermaid:not([data-processed="true"]):not(.mermaid-error)') === null`. `querySelector` immediately returns the first matching element (or null), short-circuiting the scan. Also replace `querySelectorAll(...).length > 0` with `querySelector(...) !== null`. This avoids constructing NodeLists and heavily reduces DOM overhead during polling.

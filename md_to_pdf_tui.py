@@ -429,12 +429,7 @@ async def generate_pdf_core(md_path: Path, pdf_path: Path, settings: dict, log_f
             if log_fn: log_fn(f"Waiting for {mermaid_count} diagrams to render...")
             try:
                 await page.wait_for_function("""
-                    () => {
-                        const all = document.querySelectorAll('.mermaid');
-                        const processed = document.querySelectorAll('.mermaid[data-processed="true"]');
-                        const error = document.querySelectorAll('.mermaid-error');
-                        return (processed.length + error.length) === all.length;
-                    }
+                    () => document.querySelector('.mermaid:not([data-processed="true"]):not(.mermaid-error)') === null
                 """, timeout=10000)
                 await page.wait_for_timeout(500) # Buffer for layout
             except Exception as e:
@@ -500,7 +495,7 @@ async def render_png_page(browser, md_path: Path, png_path: Path, settings: dict
         if log_fn: log_fn("Waiting for Mermaid SVG (60s timeout)...")
 
         # Check if mermaid blocks exist first to avoid 60s timeout on files without diagrams
-        has_mermaid = await page.evaluate("() => document.querySelectorAll('.mermaid').length > 0")
+        has_mermaid = await page.evaluate("() => document.querySelector('.mermaid') !== null")
 
         if not has_mermaid:
             if log_fn: log_fn("No mermaid diagrams found to wait for.")
@@ -554,7 +549,7 @@ async def render_png_page(browser, md_path: Path, png_path: Path, settings: dict
     except Exception as e:
         if log_fn: log_fn(f"Timeout or Error: {e}")
         # Check if it was a timeout but maybe it still rendered
-        has_svg = await page.evaluate("() => document.querySelectorAll('.mermaid svg').length > 0")
+        has_svg = await page.evaluate("() => document.querySelector('.mermaid svg') !== null")
         if not has_svg:
             if log_fn: log_fn("FAILED: No SVG generated and no explicit error detected. Probably a silent crash.")
             await page.close()
@@ -741,12 +736,7 @@ async def generate_docx_core(md_path: Path, docx_path: Path, log_fn=print, prog_
             # Smart wait for diagrams
             try:
                 await page.wait_for_function("""
-                    () => {
-                        const all = document.querySelectorAll('.mermaid');
-                        const processed = document.querySelectorAll('.mermaid[data-processed="true"]');
-                        const error = document.querySelectorAll('.mermaid-error');
-                        return (processed.length + error.length) === all.length;
-                    }
+                    () => document.querySelector('.mermaid:not([data-processed="true"]):not(.mermaid-error)') === null
                 """, timeout=10000)
                 await page.wait_for_timeout(500) # Buffer for layout
             except Exception as e:
