@@ -7,3 +7,6 @@ __pycache__/
 .md_to_pdf/
 settings.json
 recent_files.json
+node_modules/
+test_perf.html
+test_perf.js
