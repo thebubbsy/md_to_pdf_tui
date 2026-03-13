@@ -31,6 +31,9 @@ class TestHelpScreen(unittest.IsolatedAsyncioTestCase):
             btn = close_btn.first()
             self.assertEqual(str(btn.label), "Close")
 
+            # Verify tooltip
+            self.assertEqual(str(btn.tooltip), "Dismiss this help dialog")
+
             # Simulate button press to ensure no crash (though dismissing modal in test app might be tricky)
             await pilot.click("#dismiss-btn")
             await pilot.pause()
