@@ -989,10 +989,10 @@ The file `{filepath}` could not be found.
                         yield Button("H3", id="btn-h3", classes="tool-btn", tooltip="Heading 3 (### text)")
 
                     with Horizontal(id="preview-controls"):
-                         yield Button("👁️ TUI Preview", id="toggle-view-btn", disabled=True, variant="primary")
-                         yield Button("🌐 Browser Preview", id="browser-preview-btn", variant="default")
+                         yield Button("👁️ TUI Preview", id="toggle-view-btn", disabled=True, variant="primary", tooltip="Toggle between source code and markdown preview")
+                         yield Button("🌐 Browser Preview", id="browser-preview-btn", variant="default", tooltip="Open preview in default web browser")
                          if HAS_PIXELS:
-                             yield Button("🖼️ Render Graphs", id="tui-render-btn", variant="default")
+                             yield Button("🖼️ Render Graphs", id="tui-render-btn", variant="default", tooltip="Render and view Mermaid diagrams within the TUI")
                     with ContentSwitcher(initial="md-view", id="preview-switcher"):
                         with VerticalScroll(id="md-view"):
                             yield Markdown(id="md-preview")
@@ -1180,6 +1180,13 @@ The file `{filepath}` could not be found.
 
         @work
         async def worker_browser_preview(self, content: str):
+             def toggle_loading(is_loading: bool):
+                 try:
+                     self.query_one("#browser-preview-btn", Button).loading = is_loading
+                 except Exception:
+                     pass
+
+             self.call_from_thread(lambda: toggle_loading(True))
              loop = asyncio.get_running_loop()
              temp_dir_str = await loop.run_in_executor(None, tempfile.mkdtemp)
              try:
@@ -1192,6 +1199,8 @@ The file `{filepath}` could not be found.
                 self.notify_user("Browser preview opened.", title="Preview", severity="information")
              except Exception as e:
                 self.notify_user(f"Preview Error: {e}", title="Error", severity="error")
+             finally:
+                 self.call_from_thread(lambda: toggle_loading(False))
 
         def action_render_tui(self):
             content = ""
@@ -1226,6 +1235,14 @@ The file `{filepath}` could not be found.
 
         @work
         async def worker_render_tui(self, content: str):
+             def toggle_loading(is_loading: bool):
+                 if HAS_PIXELS:
+                     try:
+                         self.query_one("#tui-render-btn", Button).loading = is_loading
+                     except Exception:
+                         pass
+
+             self.call_from_thread(lambda: toggle_loading(True))
              loop = asyncio.get_running_loop()
              temp_dir_str = await loop.run_in_executor(None, tempfile.mkdtemp)
              try:
@@ -1309,6 +1326,7 @@ The file `{filepath}` could not be found.
              except Exception as e:
                 self.notify_user(f"TUI Render Error: {e}", title="Error", severity="error")
              finally:
+                 self.call_from_thread(lambda: toggle_loading(False))
                  # Note: Ideally we cleanup temp_dir, but we are using images in the UI
                  # If we delete temp_dir, images will vanish from the Preview.
                  # For worker_render_tui, we MUST NOT delete the directory.
