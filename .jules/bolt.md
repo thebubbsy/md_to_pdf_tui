@@ -12,3 +12,6 @@
 ## 2026-03-05 - Concurrent Gallery Mode Race Condition
 **Learning:** Running headless browser pages concurrently using `asyncio.gather` requires that shared temporary files (like `.tmp.html`) are uniquely named (e.g., via `uuid`). Otherwise, tasks overwrite each other's HTML files, leading to incorrect screenshots or silent failures.
 **Action:** When parallelizing browser tasks, ensure all intermediate file I/O uses unique, non-overlapping paths.
+## 2025-02-28 - Fast-path optimization for DOCX alert processing
+**Learning:** Found a performance bottleneck where custom markdown alert processing logic (splitting the entire document by lines into an array and iterating over it) was running unconditionally for all documents, even those without any alerts. This resulted in unnecessary O(n) array operations and string manipulations.
+**Action:** Implemented a fast-path optimization using `if "[!" in md_text and re.search(r"^\s*>\s*\[!", md_text, re.MULTILINE):` to bypass the line-by-line parsing entirely for documents that do not contain alerts. When writing custom markdown parsers, always add a fast-path string/regex check to skip O(n) line-by-line processing if the specific syntax is not present.
