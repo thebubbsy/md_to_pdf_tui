@@ -102,6 +102,8 @@ THEMES = {
         "primary": "#ff4500", "secondary": "#050000", "line": "#ff0000"
     }
 }
+THEME_SLUGS = {f"--{t.lower().replace(' ', '-')}" : t for t in THEMES}
+
 def load_recent_files() -> list[str]:
     if RECENT_FILES_PATH.exists():
         try:
@@ -1506,12 +1508,7 @@ def main():
                         pdf_path = md_path.with_suffix(ext)
 
                 settings = load_settings()
-                chosen_theme = None
-                for t in THEMES.keys():
-                    slug = "--" + t.lower().replace(" ", "-")
-                    if slug in sys.argv:
-                        chosen_theme = t
-                        break
+                chosen_theme = next((THEME_SLUGS[arg] for arg in sys.argv if arg in THEME_SLUGS), None)
 
                 if chosen_theme:
                     settings["theme"] = theme_name = chosen_theme
