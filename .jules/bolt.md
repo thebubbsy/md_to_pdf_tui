@@ -12,3 +12,7 @@
 ## 2026-03-05 - Concurrent Gallery Mode Race Condition
 **Learning:** Running headless browser pages concurrently using `asyncio.gather` requires that shared temporary files (like `.tmp.html`) are uniquely named (e.g., via `uuid`). Otherwise, tasks overwrite each other's HTML files, leading to incorrect screenshots or silent failures.
 **Action:** When parallelizing browser tasks, ensure all intermediate file I/O uses unique, non-overlapping paths.
+
+## 2026-03-18 - Offload Synchronous I/O in Async Context
+**Learning:** Calling synchronous blocking I/O functions like `shutil.copy2` or `path.write_text` directly inside an `async def` blocks the entire event loop, which is especially detrimental for UI responsiveness in frameworks like Textual.
+**Action:** Always wrap synchronous I/O operations in `await asyncio.get_running_loop().run_in_executor(None, ...)` when calling them from an asynchronous context.

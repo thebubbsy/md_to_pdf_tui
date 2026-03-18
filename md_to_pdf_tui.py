@@ -729,8 +729,7 @@ async def generate_docx_core(md_path: Path, docx_path: Path, log_fn=print, prog_
         
         tmp_h = md_path.with_suffix(f".{uuid.uuid4()}.tmp.html")
         temp_files_to_cleanup.append(tmp_h)
-        with open(tmp_h, "w", encoding="utf-8") as f:
-            f.write(html_content)
+        await asyncio.get_running_loop().run_in_executor(None, lambda: tmp_h.write_text(html_content, encoding="utf-8"))
             
         async with async_playwright() as p:
             browser = await p.chromium.launch()
@@ -767,7 +766,7 @@ async def generate_docx_core(md_path: Path, docx_path: Path, log_fn=print, prog_
                  if settings and settings.get("save_diagrams", False):
                      try:
                          d_out = docx_path.parent / f"{docx_path.stem}_diagram_{i+1}.png"
-                         shutil.copy2(img_path, d_out)
+                         await asyncio.get_running_loop().run_in_executor(None, shutil.copy2, img_path, d_out)
                          if log_fn: log_fn(f"Saved diagram: {d_out}")
                      except Exception as e:
                          if log_fn: log_fn(f"Failed to save diagram png: {e}")
