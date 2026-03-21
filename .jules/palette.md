@@ -21,3 +21,7 @@
 ## 2025-03-04 - Native Button Loading State in Textual
 **Learning:** Textual `Button` natively supports a `loading` property that replaces the button's label with a visual spinner. This provides immediate, built-in visual feedback for blocking async tasks (like PDF/DOCX generation via Playwright) without needing custom state management or extra widgets.
 **Action:** Always check if a widget has native properties (like `loading` or `tooltip`) to implement accessibility/UX feedback natively before building custom solutions. For background thread operations, always toggle this state using `self.call_from_thread` inside a `try...finally` block.
+
+## 2025-03-21 - Add tooltips and loading states to preview controls
+**Learning:** Textual widgets support tooltips directly in constructor or via assigning `.tooltip` attribute later. Buttons support `.loading` property to show a spinner to provide visual feedback during background operations. However, when toggling UI states from background tasks (`@work` workers), it's important to wrap them in `self.call_from_thread` and handle potential `NoMatches` exceptions with `try/except` if the button is out of tree.
+**Action:** When working on Textual TUI apps, add tooltips to icon-only buttons for accessibility, and use `.loading = True` to provide immediate feedback during async operations, taking care to wrap UI updates from workers in thread-safe mechanisms and try/catch blocks.
