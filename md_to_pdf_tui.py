@@ -828,7 +828,7 @@ if HAS_TEXTUAL:
                 yield Static("[b]⌨️ Keyboard Shortcuts[/b]\n", classes="header")
                 yield Static("[cyan]Ctrl+O[/] Browse\n[cyan]Ctrl+R[/] Convert\n[cyan]Ctrl+P[/] Open PDF\n[cyan]F1[/] Help", classes="body")
                 yield Rule()
-                yield Button("Close", variant="primary", id="dismiss-btn")
+                yield Button("Close", variant="primary", id="dismiss-btn", tooltip="Close the help dialog")
             yield Footer()
 
         def on_button_pressed(self, event: Button.Pressed) -> None:
@@ -879,9 +879,16 @@ if HAS_TEXTUAL:
                 # Map severity to Rich markup colors
                 color = "green" if severity == "information" else "red" if severity == "error" else "yellow"
                 log_msg = f"[{color}]{title}: {message}[/]" if title else f"[{color}]{message}[/]"
-                self.query_one("#log", RichLog).write(log_msg)
+                try:
+                    self.query_one("#log", RichLog).write(log_msg)
+                except Exception:
+                    pass
 
-            self.call_from_thread(_do_notify)
+            import threading
+            if getattr(self, "_thread_id", None) == threading.get_ident():
+                _do_notify()
+            else:
+                self.call_from_thread(_do_notify)
 
         def open_file_externally(self, path: Path):
             try:
@@ -989,10 +996,10 @@ The file `{filepath}` could not be found.
                         yield Button("H3", id="btn-h3", classes="tool-btn", tooltip="Heading 3 (### text)")
 
                     with Horizontal(id="preview-controls"):
-                         yield Button("👁️ TUI Preview", id="toggle-view-btn", disabled=True, variant="primary")
-                         yield Button("🌐 Browser Preview", id="browser-preview-btn", variant="default")
+                         yield Button("👁️ TUI Preview", id="toggle-view-btn", disabled=True, variant="primary", tooltip="Toggle between Markdown editor and text preview")
+                         yield Button("🌐 Browser Preview", id="browser-preview-btn", variant="default", tooltip="Open rendered Markdown in external web browser")
                          if HAS_PIXELS:
-                             yield Button("🖼️ Render Graphs", id="tui-render-btn", variant="default")
+                             yield Button("🖼️ Render Graphs", id="tui-render-btn", variant="default", tooltip="Render Mermaid diagrams in the TUI preview")
                     with ContentSwitcher(initial="md-view", id="preview-switcher"):
                         with VerticalScroll(id="md-view"):
                             yield Markdown(id="md-preview")
@@ -1180,6 +1187,13 @@ The file `{filepath}` could not be found.
 
         @work
         async def worker_browser_preview(self, content: str):
+             def toggle_loading(is_loading: bool):
+                 try:
+                     self.query_one("#browser-preview-btn", Button).loading = is_loading
+                 except Exception:
+                     pass
+
+             toggle_loading(True)
              loop = asyncio.get_running_loop()
              temp_dir_str = await loop.run_in_executor(None, tempfile.mkdtemp)
              try:
@@ -1192,6 +1206,8 @@ The file `{filepath}` could not be found.
                 self.notify_user("Browser preview opened.", title="Preview", severity="information")
              except Exception as e:
                 self.notify_user(f"Preview Error: {e}", title="Error", severity="error")
+             finally:
+                toggle_loading(False)
 
         def action_render_tui(self):
             content = ""
@@ -1226,6 +1242,15 @@ The file `{filepath}` could not be found.
 
         @work
         async def worker_render_tui(self, content: str):
+             def toggle_loading(is_loading: bool):
+                 try:
+                     # Check conditionally rendered button
+                     if HAS_PIXELS:
+                         self.query_one("#tui-render-btn", Button).loading = is_loading
+                 except Exception:
+                     pass
+
+             toggle_loading(True)
              loop = asyncio.get_running_loop()
              temp_dir_str = await loop.run_in_executor(None, tempfile.mkdtemp)
              try:
@@ -1312,7 +1337,7 @@ The file `{filepath}` could not be found.
                  # Note: Ideally we cleanup temp_dir, but we are using images in the UI
                  # If we delete temp_dir, images will vanish from the Preview.
                  # For worker_render_tui, we MUST NOT delete the directory.
-                 pass
+                 toggle_loading(False)
 
         @work(exclusive=True)
         async def run_conversion(self, fmt="pdf") -> None:
