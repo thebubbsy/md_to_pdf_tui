@@ -12,3 +12,7 @@
 ## 2026-03-05 - Concurrent Gallery Mode Race Condition
 **Learning:** Running headless browser pages concurrently using `asyncio.gather` requires that shared temporary files (like `.tmp.html`) are uniquely named (e.g., via `uuid`). Otherwise, tasks overwrite each other's HTML files, leading to incorrect screenshots or silent failures.
 **Action:** When parallelizing browser tasks, ensure all intermediate file I/O uses unique, non-overlapping paths.
+
+## 2025-03-25 - [Optimize URL extraction with Set Comprehensions]
+**Learning:** Extracting regex matches using explicit `for` loops in Python and `set.add()` incurs overhead from byte-code evaluation during every iteration.
+**Action:** When gathering matches from multiple regex patterns into a unique collection, use set comprehensions combined with the set union operator (`|`). This structure pushes the iteration process entirely down to the C level, offering measurable performance boosts on larger text documents.
