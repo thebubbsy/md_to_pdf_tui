@@ -12,3 +12,7 @@
 ## 2026-03-05 - Concurrent Gallery Mode Race Condition
 **Learning:** Running headless browser pages concurrently using `asyncio.gather` requires that shared temporary files (like `.tmp.html`) are uniquely named (e.g., via `uuid`). Otherwise, tasks overwrite each other's HTML files, leading to incorrect screenshots or silent failures.
 **Action:** When parallelizing browser tasks, ensure all intermediate file I/O uses unique, non-overlapping paths.
+
+## 2026-03-05 - Set Comprehension Optimization
+**Learning:** In Python, combining unique regex matches from multiple passes using explicit `for` loops with `set.add()` is slower than using set comprehensions with the set union operator (`|`). This is because set comprehensions use native C iteration, bypassing the overhead of looking up and calling the `add` method on each iteration.
+**Action:** Use set comprehensions with the set union operator (`|`) (e.g., `{m.group(1) for m in regex1} | {m.group(1) for m in regex2}`) when combining unique elements from multiple iterables.

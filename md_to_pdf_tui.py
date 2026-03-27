@@ -225,11 +225,10 @@ def process_resources(md_text: str, temp_dir: Path) -> str:
                 return url, None
 
     # 1. Identify all unique URLs
-    urls = set()
-    for match in MD_IMG_PATTERN.finditer(md_text):
-        urls.add(match.group(2))
-    for match in HTML_IMG_PATTERN.finditer(md_text):
-        urls.add(match.group(1))
+    # Optimization: Use set comprehensions and set union operator (|) for faster execution
+    # via native C iteration compared to explicit for loops and set.add().
+    urls = {match.group(2) for match in MD_IMG_PATTERN.finditer(md_text)} | \
+           {match.group(1) for match in HTML_IMG_PATTERN.finditer(md_text)}
 
     # Optimization: Early return if no resources to process, avoiding expensive substitution passes
     if not urls:
