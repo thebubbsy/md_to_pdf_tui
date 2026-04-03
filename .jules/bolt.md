@@ -12,3 +12,7 @@
 ## 2026-03-05 - Concurrent Gallery Mode Race Condition
 **Learning:** Running headless browser pages concurrently using `asyncio.gather` requires that shared temporary files (like `.tmp.html`) are uniquely named (e.g., via `uuid`). Otherwise, tasks overwrite each other's HTML files, leading to incorrect screenshots or silent failures.
 **Action:** When parallelizing browser tasks, ensure all intermediate file I/O uses unique, non-overlapping paths.
+
+## 2026-03-08 - Conditional CDN Script Injection
+**Learning:** Injecting large external scripts (like mermaid.min.js via CDN) unconditionally into the HTML payload adds ~500ms of loading and evaluation overhead, penalizing documents that don't even use the feature. Playwright's `wait_until="load"` blocks until these external resources are fully downloaded and parsed.
+**Action:** Use static analysis (e.g., regex `has_mermaid`) to conditionally include heavy `<script>` tags and initialization blocks only when required, creating a fast-path for standard documents.
