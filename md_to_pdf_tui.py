@@ -352,6 +352,8 @@ def create_html_content(md_text: str, settings: dict) -> str:
     c_width = int(settings.get("content_width", 800))
     m_enabled = settings.get("mermaid_enabled", True)
     
+    has_mermaid = m_enabled and bool(MERMAID_PATTERN.search(md_text))
+
     it = _get_md_parser()
     body = it.render(md_text, env={"mermaid_enabled": m_enabled})
     
@@ -366,8 +368,8 @@ def create_html_content(md_text: str, settings: dict) -> str:
                 tertiaryColor: "{t_data['bg']}"
             }}'''
             
-    return f'''<!DOCTYPE html><html><head><meta charset="UTF-8">
-<script src="https://cdn.jsdelivr.net/npm/mermaid@11.4.1/dist/mermaid.min.js"></script>
+    # ⚡ Bolt: Only inject heavy Mermaid.js dependency if diagrams exist
+    mermaid_scripts = f'''<script src="https://cdn.jsdelivr.net/npm/mermaid@11.4.1/dist/mermaid.min.js"></script>
 <script>
 mermaid.initialize({{ 
     startOnLoad: true, 
@@ -377,7 +379,10 @@ mermaid.initialize({{
     flowchart: {{ useMaxWidth: false, htmlLabels: true, curve: "linear" }},
     securityLevel: "loose"
 }});
-</script>
+</script>''' if has_mermaid else ""
+
+    return f'''<!DOCTYPE html><html><head><meta charset="UTF-8">
+{mermaid_scripts}
 <style>
 body {{ background: {t_data['bg']}; color: {t_data['txt']}; font-family: -apple-system, "Segoe UI", sans-serif; line-height: 1.6; margin: 0; padding: 0; display: flex; flex-direction: column; align-items: center; width: 100%; }}
 #canvas {{ padding: 60px 40px; width: 100%; max-width: {c_width}px; box-sizing: border-box; }}
