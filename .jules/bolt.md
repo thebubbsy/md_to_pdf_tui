@@ -12,3 +12,6 @@
 ## 2026-03-05 - Concurrent Gallery Mode Race Condition
 **Learning:** Running headless browser pages concurrently using `asyncio.gather` requires that shared temporary files (like `.tmp.html`) are uniquely named (e.g., via `uuid`). Otherwise, tasks overwrite each other's HTML files, leading to incorrect screenshots or silent failures.
 **Action:** When parallelizing browser tasks, ensure all intermediate file I/O uses unique, non-overlapping paths.
+## 2026-04-03 - Bypass O(n) array operations with fast-path string checks
+**Learning:** In Python, doing an initial cheap check like `if "keyword" in string and regex.search(string):` is significantly faster than unconditionally performing memory-intensive operations like `string.split('\n')` and looping through the array for every call, especially when the target condition is relatively rare.
+**Action:** When processing potentially large documents for a specific block or pattern, always evaluate if a fast-path substring or regex scan can safely short-circuit and avoid expensive line-by-line array iterations.
