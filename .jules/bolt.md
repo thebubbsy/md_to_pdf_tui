@@ -12,3 +12,7 @@
 ## 2026-03-05 - Concurrent Gallery Mode Race Condition
 **Learning:** Running headless browser pages concurrently using `asyncio.gather` requires that shared temporary files (like `.tmp.html`) are uniquely named (e.g., via `uuid`). Otherwise, tasks overwrite each other's HTML files, leading to incorrect screenshots or silent failures.
 **Action:** When parallelizing browser tasks, ensure all intermediate file I/O uses unique, non-overlapping paths.
+
+## 2026-03-06 - Fast-path bypassing expensive O(n) operations
+**Learning:** In `generate_docx_core`, processing alerts involved splitting the entire document line-by-line (`O(n)` array allocation) even if the document contained no alerts.
+**Action:** Implemented a fast-path string/regex check (`if "[!" in md_text and re.search(...)`) to completely bypass the line-by-line processing when the feature is absent.
