@@ -193,6 +193,10 @@ def process_resources(md_text: str, temp_dir: Path) -> str:
     Downloads remote images to temp_dir.
     Updates markdown references to point to absolute paths for local files.
     """
+    # Optimization: Fast-path early return for documents without images
+    if "![" not in md_text and "<img" not in md_text:
+        return md_text
+
     def _hash_url(url: str) -> str:
         return hashlib.md5(url.encode()).hexdigest()
 
