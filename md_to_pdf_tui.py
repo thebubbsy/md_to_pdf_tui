@@ -828,7 +828,7 @@ if HAS_TEXTUAL:
                 yield Static("[b]⌨️ Keyboard Shortcuts[/b]\n", classes="header")
                 yield Static("[cyan]Ctrl+O[/] Browse\n[cyan]Ctrl+R[/] Convert\n[cyan]Ctrl+P[/] Open PDF\n[cyan]F1[/] Help", classes="body")
                 yield Rule()
-                yield Button("Close", variant="primary", id="dismiss-btn")
+                yield Button("Close", variant="primary", id="dismiss-btn", tooltip="Close help dialog")
             yield Footer()
 
         def on_button_pressed(self, event: Button.Pressed) -> None:
@@ -989,10 +989,10 @@ The file `{filepath}` could not be found.
                         yield Button("H3", id="btn-h3", classes="tool-btn", tooltip="Heading 3 (### text)")
 
                     with Horizontal(id="preview-controls"):
-                         yield Button("👁️ TUI Preview", id="toggle-view-btn", disabled=True, variant="primary")
-                         yield Button("🌐 Browser Preview", id="browser-preview-btn", variant="default")
+                         yield Button("👁️ TUI Preview", id="toggle-view-btn", disabled=True, variant="primary", tooltip="Preview markdown in TUI (Disabled in File Mode)")
+                         yield Button("🌐 Browser Preview", id="browser-preview-btn", variant="default", tooltip="Preview current document in a web browser")
                          if HAS_PIXELS:
-                             yield Button("🖼️ Render Graphs", id="tui-render-btn", variant="default")
+                             yield Button("🖼️ Render Graphs", id="tui-render-btn", variant="default", tooltip="Render Mermaid diagrams in the TUI preview")
                     with ContentSwitcher(initial="md-view", id="preview-switcher"):
                         with VerticalScroll(id="md-view"):
                             yield Markdown(id="md-preview")
@@ -1034,10 +1034,12 @@ The file `{filepath}` could not be found.
                     toggle_btn.disabled = False
                     toggle_btn.label = "👁️ TUI Preview"
                     toggle_btn.variant = "primary"
+                    toggle_btn.tooltip = "Preview markdown in TUI"
                 else:
                     # File Mode
                     switcher.current = "md-view"
                     toggle_btn.disabled = True
+                    toggle_btn.tooltip = "Preview markdown in TUI (Disabled in File Mode)"
                     # Update preview when switching back to file mode
                     self.update_file_preview(self.query_one("#md-input", Input).value)
             save_settings(self.settings)
@@ -1136,11 +1138,13 @@ The file `{filepath}` could not be found.
                     switcher.current = "md-view"
                     btn.label = "✏️ Back to Edit"
                     btn.variant = "default"
+                    btn.tooltip = "Return to markdown editor"
                 else:
                     # Switch back to Edit
                     switcher.current = "paste-area"
                     btn.label = "👁️ TUI Preview"
                     btn.variant = "primary"
+                    btn.tooltip = "Preview markdown in TUI"
 
         def action_browse_file(self):
             f = open_file_dialog()
@@ -1221,6 +1225,7 @@ The file `{filepath}` could not be found.
                 switcher.current = "md-view"
                 self.query_one("#toggle-view-btn", Button).label = "✏️ Back to Edit"
                 self.query_one("#toggle-view-btn", Button).variant = "default"
+                self.query_one("#toggle-view-btn", Button).tooltip = "Return to markdown editor"
 
             self.worker_render_tui(content)
 
