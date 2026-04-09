@@ -21,3 +21,7 @@
 ## 2025-03-04 - Native Button Loading State in Textual
 **Learning:** Textual `Button` natively supports a `loading` property that replaces the button's label with a visual spinner. This provides immediate, built-in visual feedback for blocking async tasks (like PDF/DOCX generation via Playwright) without needing custom state management or extra widgets.
 **Action:** Always check if a widget has native properties (like `loading` or `tooltip`) to implement accessibility/UX feedback natively before building custom solutions. For background thread operations, always toggle this state using `self.call_from_thread` inside a `try...finally` block.
+
+## 2024-05-25 - Dynamic Tooltips for State Toggle Buttons
+**Learning:** In Textual TUIs, buttons that change function (like toggling between edit and preview modes) should also update their tooltips dynamically alongside their label and variant to ensure consistent accessibility and context for the user. A static or missing tooltip on a dynamic button causes confusion.
+**Action:** Always update the `tooltip` property simultaneously with the `label` or `variant` properties when a button's primary function changes.

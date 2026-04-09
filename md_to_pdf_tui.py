@@ -989,7 +989,7 @@ The file `{filepath}` could not be found.
                         yield Button("H3", id="btn-h3", classes="tool-btn", tooltip="Heading 3 (### text)")
 
                     with Horizontal(id="preview-controls"):
-                         yield Button("👁️ TUI Preview", id="toggle-view-btn", disabled=True, variant="primary")
+                         yield Button("👁️ TUI Preview", id="toggle-view-btn", disabled=True, variant="primary", tooltip="Preview is automatic in file mode")
                          yield Button("🌐 Browser Preview", id="browser-preview-btn", variant="default")
                          if HAS_PIXELS:
                              yield Button("🖼️ Render Graphs", id="tui-render-btn", variant="default")
@@ -1034,10 +1034,12 @@ The file `{filepath}` could not be found.
                     toggle_btn.disabled = False
                     toggle_btn.label = "👁️ TUI Preview"
                     toggle_btn.variant = "primary"
+                    toggle_btn.tooltip = "Switch to rendered preview of your markdown"
                 else:
                     # File Mode
                     switcher.current = "md-view"
                     toggle_btn.disabled = True
+                    toggle_btn.tooltip = "Preview is automatic in file mode"
                     # Update preview when switching back to file mode
                     self.update_file_preview(self.query_one("#md-input", Input).value)
             save_settings(self.settings)
@@ -1136,11 +1138,13 @@ The file `{filepath}` could not be found.
                     switcher.current = "md-view"
                     btn.label = "✏️ Back to Edit"
                     btn.variant = "default"
+                    btn.tooltip = "Switch back to markdown editor"
                 else:
                     # Switch back to Edit
                     switcher.current = "paste-area"
                     btn.label = "👁️ TUI Preview"
                     btn.variant = "primary"
+                    btn.tooltip = "Switch to rendered preview of your markdown"
 
         def action_browse_file(self):
             f = open_file_dialog()
