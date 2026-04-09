@@ -356,7 +356,12 @@ def create_html_content(md_text: str, settings: dict) -> str:
     body = it.render(md_text, env={"mermaid_enabled": m_enabled})
     
     # Configure Mermaid Theme based on our palette
-    m_theme_init = f'''theme: "base",
+    mermaid_script = ""
+    # ⚡ Bolt: Conditionally inject Mermaid.js only if diagrams are present.
+    # This prevents Playwright from unnecessarily loading and parsing the heavy script
+    # on documents without diagrams, reducing generation latency.
+    if 'class="mermaid"' in body:
+        m_theme_init = f'''theme: "base",
             themeVariables: {{
                 primaryColor: "{t_data['bg']}",
                 primaryTextColor: "{t_data['primary']}",
@@ -366,7 +371,7 @@ def create_html_content(md_text: str, settings: dict) -> str:
                 tertiaryColor: "{t_data['bg']}"
             }}'''
             
-    return f'''<!DOCTYPE html><html><head><meta charset="UTF-8">
+        mermaid_script = f'''
 <script src="https://cdn.jsdelivr.net/npm/mermaid@11.4.1/dist/mermaid.min.js"></script>
 <script>
 mermaid.initialize({{ 
@@ -377,7 +382,9 @@ mermaid.initialize({{
     flowchart: {{ useMaxWidth: false, htmlLabels: true, curve: "linear" }},
     securityLevel: "loose"
 }});
-</script>
+</script>'''
+
+    return f'''<!DOCTYPE html><html><head><meta charset="UTF-8">{mermaid_script}
 <style>
 body {{ background: {t_data['bg']}; color: {t_data['txt']}; font-family: -apple-system, "Segoe UI", sans-serif; line-height: 1.6; margin: 0; padding: 0; display: flex; flex-direction: column; align-items: center; width: 100%; }}
 #canvas {{ padding: 60px 40px; width: 100%; max-width: {c_width}px; box-sizing: border-box; }}
