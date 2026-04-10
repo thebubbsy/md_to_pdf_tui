@@ -989,7 +989,7 @@ The file `{filepath}` could not be found.
                         yield Button("H3", id="btn-h3", classes="tool-btn", tooltip="Heading 3 (### text)")
 
                     with Horizontal(id="preview-controls"):
-                         yield Button("👁️ TUI Preview", id="toggle-view-btn", disabled=True, variant="primary")
+                         yield Button("👁️ TUI Preview", id="toggle-view-btn", disabled=True, variant="primary", tooltip="Switch to Markdown Preview")
                          yield Button("🌐 Browser Preview", id="browser-preview-btn", variant="default")
                          if HAS_PIXELS:
                              yield Button("🖼️ Render Graphs", id="tui-render-btn", variant="default")
@@ -1033,6 +1033,7 @@ The file `{filepath}` could not be found.
                     switcher.current = "paste-area"
                     toggle_btn.disabled = False
                     toggle_btn.label = "👁️ TUI Preview"
+                    toggle_btn.tooltip = "Switch to Markdown Preview"
                     toggle_btn.variant = "primary"
                 else:
                     # File Mode
@@ -1135,11 +1136,13 @@ The file `{filepath}` could not be found.
                     self.query_one("#md-preview", Markdown).update(content)
                     switcher.current = "md-view"
                     btn.label = "✏️ Back to Edit"
+                    btn.tooltip = "Return to Text Editor"
                     btn.variant = "default"
                 else:
                     # Switch back to Edit
                     switcher.current = "paste-area"
                     btn.label = "👁️ TUI Preview"
+                    btn.tooltip = "Switch to Markdown Preview"
                     btn.variant = "primary"
 
         def action_browse_file(self):
