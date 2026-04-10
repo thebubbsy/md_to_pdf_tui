@@ -12,3 +12,7 @@
 ## 2026-03-05 - Concurrent Gallery Mode Race Condition
 **Learning:** Running headless browser pages concurrently using `asyncio.gather` requires that shared temporary files (like `.tmp.html`) are uniquely named (e.g., via `uuid`). Otherwise, tasks overwrite each other's HTML files, leading to incorrect screenshots or silent failures.
 **Action:** When parallelizing browser tasks, ensure all intermediate file I/O uses unique, non-overlapping paths.
+
+## 2026-03-05 - Heavy Script Overhead on Headless Pages
+**Learning:** Unconditionally injecting large JS libraries (like Mermaid.js) into HTML templates adds significant overhead to headless browser page loads (e.g., Playwright). Documents without diagrams were still paying a ~200-500ms penalty just to parse and execute the unused script.
+**Action:** Conditionally inject heavy scripts only when required by the document content. Using cheap static checks (e.g., searching for 'class="mermaid"' in the rendered HTML string) is an efficient way to determine if the script is needed before passing it to the browser.
