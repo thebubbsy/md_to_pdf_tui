@@ -989,10 +989,10 @@ The file `{filepath}` could not be found.
                         yield Button("H3", id="btn-h3", classes="tool-btn", tooltip="Heading 3 (### text)")
 
                     with Horizontal(id="preview-controls"):
-                         yield Button("👁️ TUI Preview", id="toggle-view-btn", disabled=True, variant="primary")
-                         yield Button("🌐 Browser Preview", id="browser-preview-btn", variant="default")
+                         yield Button("👁️ TUI Preview", id="toggle-view-btn", disabled=True, variant="primary", tooltip="Preview the pasted Markdown")
+                         yield Button("🌐 Browser Preview", id="browser-preview-btn", variant="default", tooltip="Preview in a web browser")
                          if HAS_PIXELS:
-                             yield Button("🖼️ Render Graphs", id="tui-render-btn", variant="default")
+                             yield Button("🖼️ Render Graphs", id="tui-render-btn", variant="default", tooltip="Render Mermaid graphs in TUI preview")
                     with ContentSwitcher(initial="md-view", id="preview-switcher"):
                         with VerticalScroll(id="md-view"):
                             yield Markdown(id="md-preview")
@@ -1034,6 +1034,7 @@ The file `{filepath}` could not be found.
                     toggle_btn.disabled = False
                     toggle_btn.label = "👁️ TUI Preview"
                     toggle_btn.variant = "primary"
+                    toggle_btn.tooltip = "Preview the pasted Markdown"
                 else:
                     # File Mode
                     switcher.current = "md-view"
@@ -1136,11 +1137,13 @@ The file `{filepath}` could not be found.
                     switcher.current = "md-view"
                     btn.label = "✏️ Back to Edit"
                     btn.variant = "default"
+                    btn.tooltip = "Return to editing Markdown text"
                 else:
                     # Switch back to Edit
                     switcher.current = "paste-area"
                     btn.label = "👁️ TUI Preview"
                     btn.variant = "primary"
+                    btn.tooltip = "Preview the pasted Markdown"
 
         def action_browse_file(self):
             f = open_file_dialog()
@@ -1221,6 +1224,7 @@ The file `{filepath}` could not be found.
                 switcher.current = "md-view"
                 self.query_one("#toggle-view-btn", Button).label = "✏️ Back to Edit"
                 self.query_one("#toggle-view-btn", Button).variant = "default"
+                self.query_one("#toggle-view-btn", Button).tooltip = "Return to editing Markdown text"
 
             self.worker_render_tui(content)
 
