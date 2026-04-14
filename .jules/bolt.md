@@ -12,3 +12,7 @@
 ## 2026-03-05 - Concurrent Gallery Mode Race Condition
 **Learning:** Running headless browser pages concurrently using `asyncio.gather` requires that shared temporary files (like `.tmp.html`) are uniquely named (e.g., via `uuid`). Otherwise, tasks overwrite each other's HTML files, leading to incorrect screenshots or silent failures.
 **Action:** When parallelizing browser tasks, ensure all intermediate file I/O uses unique, non-overlapping paths.
+
+## 2024-05-24 - Expensive Playwright Browser Launch in Hot Paths
+**Learning:** Instantiating a headless browser via Playwright `chromium.launch()` in `generate_pdf_core`, `generate_png_core`, and `generate_docx_core` takes significant time (~1-2 seconds) per call. For bulk exports or UI interactions, this introduces noticeable latency.
+**Action:** Implement a global singleton `_browser_instance` via `_get_browser()` to reuse the same browser instance across multiple page generations, significantly improving throughput for document generation.
