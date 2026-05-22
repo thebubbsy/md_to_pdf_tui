@@ -439,6 +439,14 @@ th {{ background: {t_data['code']}; font-weight: bold; }}
 .mermaid-error {{ background: #fee2e2 !important; color: #991b1b !important; border: 2px solid #ef4444 !important; padding: 20px !important; margin: 20px 0 !important; font-family: monospace !important; border-radius: 8px !important; white-space: pre-wrap !important; }}
 </style></head><body><div id="canvas">{body}</div></body></html>'''
 
+async def async_remove_file(path):
+    """Asynchronously remove a file without blocking the event loop."""
+    loop = asyncio.get_running_loop()
+    def _remove():
+        try: os.remove(path)
+        except: pass
+    await loop.run_in_executor(None, _remove)
+
 async def generate_pdf_core(md_path: Path, pdf_path: Path, settings: dict, log_fn=print, prog_fn=None, browser=None) -> None:
     u_height = settings.get("unlimited_height", True)
     a4_width = settings.get("a4_fixed_width", True)
@@ -515,8 +523,7 @@ async def generate_pdf_core(md_path: Path, pdf_path: Path, settings: dict, log_f
         await render_pdf_page(browser_instance)
 
     if not settings.get("save_html", False): 
-        try: os.remove(tmp_h)
-        except: pass
+        await async_remove_file(tmp_h)
 
 async def render_png_page(browser, md_path: Path, png_path: Path, settings: dict, log_fn=print, prog_fn=None) -> None:
     theme_name = settings.get("theme", "GitHub Light")
@@ -591,8 +598,7 @@ async def render_png_page(browser, md_path: Path, png_path: Path, settings: dict
             
             await page.close()
             if "--gallery" not in sys.argv:
-                try: os.remove(tmp_h)
-                except: pass
+                await async_remove_file(tmp_h)
             sys.exit(1)
 
         if has_mermaid:
@@ -621,8 +627,7 @@ async def render_png_page(browser, md_path: Path, png_path: Path, settings: dict
 
     # KEEP tmp_h for debugging in gallery mode
     if "--gallery" not in sys.argv:
-        try: os.remove(tmp_h)
-        except: pass
+        await async_remove_file(tmp_h)
 
 async def generate_png_core(md_path: Path, png_path: Path, settings: dict, log_fn=print, prog_fn=None, browser=None) -> None:
     def _check_mermaid():
@@ -860,9 +865,8 @@ async def generate_docx_core(md_path: Path, docx_path: Path, log_fn=print, prog_
     
     # Cleanup
     for p in temp_files_to_cleanup:
-        try:
-            if p.exists(): os.remove(p)
-        except: pass
+        if p.exists():
+            await async_remove_file(p)
     
     if proc.returncode != 0:
         raise RuntimeError(f"Pandoc failed: {stderr.decode()}")

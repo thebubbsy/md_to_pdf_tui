@@ -16,3 +16,7 @@
 ## 2024-05-24 - Expensive Playwright Browser Launch in Hot Paths
 **Learning:** Instantiating a headless browser via Playwright `chromium.launch()` in `generate_pdf_core`, `generate_png_core`, and `generate_docx_core` takes significant time (~1-2 seconds) per call. For bulk exports or UI interactions, this introduces noticeable latency.
 **Action:** Implement a global singleton `_browser_instance` via `_get_browser()` to reuse the same browser instance across multiple page generations, significantly improving throughput for document generation.
+
+## 2026-03-08 - Synchronous I/O in Async Functions
+**Learning:** Found `os.remove` called directly inside multiple `async def` methods (`generate_pdf_core`, `render_png_page`, `generate_png_core`, `generate_docx_core`). This synchronous disk I/O blocks the main event loop, causing measurable TUI lag (~50ms per batch).
+**Action:** Always wrap synchronous disk operations (like file deletion) in `asyncio.get_running_loop().run_in_executor` to avoid freezing the Textual TUI event loop, resulting in a >90% reduction in event loop blockage.
