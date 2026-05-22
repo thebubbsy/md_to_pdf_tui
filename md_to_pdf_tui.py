@@ -515,8 +515,10 @@ async def generate_pdf_core(md_path: Path, pdf_path: Path, settings: dict, log_f
         await render_pdf_page(browser_instance)
 
     if not settings.get("save_html", False): 
-        try: os.remove(tmp_h)
-        except: pass
+        def _remove_tmp():
+            try: os.remove(tmp_h)
+            except: pass
+        await asyncio.get_running_loop().run_in_executor(None, _remove_tmp)
 
 async def render_png_page(browser, md_path: Path, png_path: Path, settings: dict, log_fn=print, prog_fn=None) -> None:
     theme_name = settings.get("theme", "GitHub Light")
@@ -591,8 +593,10 @@ async def render_png_page(browser, md_path: Path, png_path: Path, settings: dict
             
             await page.close()
             if "--gallery" not in sys.argv:
-                try: os.remove(tmp_h)
-                except: pass
+                def _remove_tmp_err():
+                    try: os.remove(tmp_h)
+                    except: pass
+                await asyncio.get_running_loop().run_in_executor(None, _remove_tmp_err)
             sys.exit(1)
 
         if has_mermaid:
@@ -621,8 +625,10 @@ async def render_png_page(browser, md_path: Path, png_path: Path, settings: dict
 
     # KEEP tmp_h for debugging in gallery mode
     if "--gallery" not in sys.argv:
-        try: os.remove(tmp_h)
-        except: pass
+        def _remove_tmp_final():
+            try: os.remove(tmp_h)
+            except: pass
+        await asyncio.get_running_loop().run_in_executor(None, _remove_tmp_final)
 
 async def generate_png_core(md_path: Path, png_path: Path, settings: dict, log_fn=print, prog_fn=None, browser=None) -> None:
     def _check_mermaid():
@@ -859,10 +865,12 @@ async def generate_docx_core(md_path: Path, docx_path: Path, log_fn=print, prog_
     stdout, stderr = await proc.communicate()
     
     # Cleanup
-    for p in temp_files_to_cleanup:
-        try:
-            if p.exists(): os.remove(p)
-        except: pass
+    def _cleanup_temp():
+        for p in temp_files_to_cleanup:
+            try:
+                if p.exists(): os.remove(p)
+            except: pass
+    await asyncio.get_running_loop().run_in_executor(None, _cleanup_temp)
     
     if proc.returncode != 0:
         raise RuntimeError(f"Pandoc failed: {stderr.decode()}")
