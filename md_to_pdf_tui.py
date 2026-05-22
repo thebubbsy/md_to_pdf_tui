@@ -859,10 +859,12 @@ async def generate_docx_core(md_path: Path, docx_path: Path, log_fn=print, prog_
     stdout, stderr = await proc.communicate()
     
     # Cleanup
-    for p in temp_files_to_cleanup:
-        try:
-            if p.exists(): os.remove(p)
-        except: pass
+    def _cleanup():
+        for p in temp_files_to_cleanup:
+            try:
+                if p.exists(): os.remove(p)
+            except: pass
+    await asyncio.get_running_loop().run_in_executor(None, _cleanup)
     
     if proc.returncode != 0:
         raise RuntimeError(f"Pandoc failed: {stderr.decode()}")
