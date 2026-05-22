@@ -815,7 +815,8 @@ async def generate_docx_core(md_path: Path, docx_path: Path, log_fn=print, prog_
                  if settings and settings.get("save_diagrams", False):
                      try:
                          d_out = docx_path.parent / f"{docx_path.stem}_diagram_{i+1}.png"
-                         shutil.copy2(img_path, d_out)
+                         loop = asyncio.get_running_loop()
+                         await loop.run_in_executor(None, shutil.copy2, img_path, d_out)
                          if log_fn: log_fn(f"Saved diagram: {d_out}")
                      except Exception as e:
                          if log_fn: log_fn(f"Failed to save diagram png: {e}")
