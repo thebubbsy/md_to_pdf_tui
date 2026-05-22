@@ -515,7 +515,7 @@ async def generate_pdf_core(md_path: Path, pdf_path: Path, settings: dict, log_f
         await render_pdf_page(browser_instance)
 
     if not settings.get("save_html", False): 
-        try: os.remove(tmp_h)
+        try: await asyncio.get_running_loop().run_in_executor(None, os.remove, tmp_h)
         except: pass
 
 async def render_png_page(browser, md_path: Path, png_path: Path, settings: dict, log_fn=print, prog_fn=None) -> None:
@@ -591,7 +591,7 @@ async def render_png_page(browser, md_path: Path, png_path: Path, settings: dict
             
             await page.close()
             if "--gallery" not in sys.argv:
-                try: os.remove(tmp_h)
+                try: await asyncio.get_running_loop().run_in_executor(None, os.remove, tmp_h)
                 except: pass
             sys.exit(1)
 
@@ -621,7 +621,7 @@ async def render_png_page(browser, md_path: Path, png_path: Path, settings: dict
 
     # KEEP tmp_h for debugging in gallery mode
     if "--gallery" not in sys.argv:
-        try: os.remove(tmp_h)
+        try: await asyncio.get_running_loop().run_in_executor(None, os.remove, tmp_h)
         except: pass
 
 async def generate_png_core(md_path: Path, png_path: Path, settings: dict, log_fn=print, prog_fn=None, browser=None) -> None:
@@ -861,7 +861,7 @@ async def generate_docx_core(md_path: Path, docx_path: Path, log_fn=print, prog_
     # Cleanup
     for p in temp_files_to_cleanup:
         try:
-            if p.exists(): os.remove(p)
+            if p.exists(): await asyncio.get_running_loop().run_in_executor(None, os.remove, p)
         except: pass
     
     if proc.returncode != 0:
