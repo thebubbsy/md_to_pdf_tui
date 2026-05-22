@@ -283,26 +283,18 @@ def is_pure_mermaid(text: str) -> bool:
     """
     Checks if the text contains only a mermaid block.
     """
-    l = len(text)
-    start = 0
-    while start < l and text[start].isspace():
-        start += 1
-
-    if start == l:
+    stripped = text.strip()
+    if not stripped:
         return False
 
-    if text.startswith("```mermaid", start):
+    if stripped.startswith("```mermaid"):
         suffix = "```"
-    elif text.startswith("~~~mermaid", start):
+    elif stripped.startswith("~~~mermaid"):
         suffix = "~~~"
     else:
         return False
 
-    end = l
-    while end > start and text[end-1].isspace():
-        end -= 1
-
-    return text.endswith(suffix, start, end)
+    return stripped.endswith(suffix)
 
 # --- Core Conversion Logic (Decoupled from TUI) ---
 # --- Core Conversion Logic (Decoupled from TUI) ---
