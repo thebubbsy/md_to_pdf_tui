@@ -830,17 +830,21 @@ async def generate_docx_core(md_path: Path, docx_path: Path, log_fn=print, prog_
             await render_docx_page(browser_instance)
             
         # Replace blocks in MD text with images
-        # Do it in reverse order to not mess up indices
-        modified_md = md_text
-        for i in range(len(mermaid_blocks) - 1, -1, -1):
+        # Build the final string efficiently using a list
+        parts = []
+        last_end = 0
+        for i, match in enumerate(mermaid_blocks):
+            parts.append(md_text[last_end:match.start()])
             if i < len(temp_images):
-                match = mermaid_blocks[i]
                 img_path = temp_images[i]
-                rel_path = img_path.name # Pandoc will resolve relative to cwd or we give abs
                 # Using absolute path for safety since we might run pandoc from anywhere
                 abs_img_path = str(img_path.resolve()).replace("\\", "/")
-                replacement = f"![Diagram]({abs_img_path})"
-                modified_md = modified_md[:match.start()] + replacement + modified_md[match.end():]
+                parts.append(f"![Diagram]({abs_img_path})")
+            else:
+                parts.append(match.group(0))
+            last_end = match.end()
+        parts.append(md_text[last_end:])
+        modified_md = "".join(parts)
                 
     else:
         modified_md = md_text
