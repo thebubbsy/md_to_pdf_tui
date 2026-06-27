@@ -934,7 +934,11 @@ if HAS_TEXTUAL:
                 log_msg = f"[{color}]{title}: {message}[/]" if title else f"[{color}]{message}[/]"
                 self.query_one("#log", RichLog).write(log_msg)
 
-            self.call_from_thread(_do_notify)
+            import threading
+            if getattr(self, "_thread_id", None) == threading.get_ident():
+                _do_notify()
+            else:
+                self.call_from_thread(_do_notify)
 
         def open_file_externally(self, path: Path):
             try:
@@ -1386,7 +1390,7 @@ The file `{filepath}` could not be found.
                 except Exception:
                     pass
 
-            self.call_from_thread(lambda: toggle_loading(True))
+            toggle_loading(True)
 
             try:
                 if self.use_paste_source:
@@ -1468,12 +1472,12 @@ The file `{filepath}` could not be found.
                         self.notify_user(f"Export Done: {opath.name}", title="Success")
 
                     self.last_output_path = opath
-                    self.call_from_thread(enable_btn)
+                    enable_btn()
             except Exception as e:
                 log(f"[red]Error: {e}[/]")
                 self.notify_user(f"Error: {e}", title="Export Failed", severity="error")
             finally:
-                self.call_from_thread(lambda: toggle_loading(False))
+                toggle_loading(False)
 
 async def run_gallery_mode(md_path: Path) -> None:
     print("--- Gallery Mode: Generating for all themes ---")

@@ -1,6 +1,6 @@
 # Markdown to PDF Converter TUI (Pro Suite)
 
-**MDPDFM PRO v3.0** is a feature-rich, "zero-bullshit" Markdown to PDF/DOCX/PNG converter. It features a modern Terminal User Interface (TUI) powered by Textual, high-quality rendering via Playwright, and specialized support for advanced documentation styles (alerts, themes).
+**MDPDFM PRO v3.0** is a feature-rich, no-nonsense Markdown to PDF/DOCX/PNG converter. It features a modern Terminal User Interface (TUI) powered by Textual, high-quality rendering via Playwright, and specialized support for advanced documentation styles (alerts, themes).
 
 ## Features
 
@@ -96,4 +96,6 @@ python md_to_pdf_tui.py report.md --headless --docx
 -   `playwright`
 -   `markdown-it-py`
 -   `mdit-py-plugins`
+-   `rich-pixels`
+-   `pillow`
 -   `pandoc` (only for DOCX export)
