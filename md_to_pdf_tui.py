@@ -283,26 +283,18 @@ def is_pure_mermaid(text: str) -> bool:
     """
     Checks if the text contains only a mermaid block.
     """
-    l = len(text)
-    start = 0
-    while start < l and text[start].isspace():
-        start += 1
-
-    if start == l:
+    stripped = text.strip()
+    if not stripped:
         return False
 
-    if text.startswith("```mermaid", start):
+    if stripped.startswith("```mermaid"):
         suffix = "```"
-    elif text.startswith("~~~mermaid", start):
+    elif stripped.startswith("~~~mermaid"):
         suffix = "~~~"
     else:
         return False
 
-    end = l
-    while end > start and text[end-1].isspace():
-        end -= 1
-
-    return text.endswith(suffix, start, end)
+    return stripped.endswith(suffix)
 
 # --- Core Conversion Logic (Decoupled from TUI) ---
 # --- Core Conversion Logic (Decoupled from TUI) ---
@@ -815,7 +807,7 @@ async def generate_docx_core(md_path: Path, docx_path: Path, log_fn=print, prog_
                  if settings and settings.get("save_diagrams", False):
                      try:
                          d_out = docx_path.parent / f"{docx_path.stem}_diagram_{i+1}.png"
-                         shutil.copy2(img_path, d_out)
+                         await asyncio.get_running_loop().run_in_executor(None, shutil.copy2, img_path, d_out)
                          if log_fn: log_fn(f"Saved diagram: {d_out}")
                      except Exception as e:
                          if log_fn: log_fn(f"Failed to save diagram png: {e}")
@@ -829,19 +821,24 @@ async def generate_docx_core(md_path: Path, docx_path: Path, log_fn=print, prog_
             browser_instance = await _get_browser()
             await render_docx_page(browser_instance)
             
-        # Replace blocks in MD text with images
-        # Do it in reverse order to not mess up indices
-        modified_md = md_text
-        for i in range(len(mermaid_blocks) - 1, -1, -1):
+        # Replace blocks in MD text with images.
+        # Build the result in a single forward pass (O(N)) instead of repeatedly
+        # slicing the whole string per block (O(N^2)).
+        parts = []
+        last_end = 0
+        for i, match in enumerate(mermaid_blocks):
+            parts.append(md_text[last_end:match.start()])
             if i < len(temp_images):
-                match = mermaid_blocks[i]
-                img_path = temp_images[i]
-                rel_path = img_path.name # Pandoc will resolve relative to cwd or we give abs
-                # Using absolute path for safety since we might run pandoc from anywhere
-                abs_img_path = str(img_path.resolve()).replace("\\", "/")
-                replacement = f"![Diagram]({abs_img_path})"
-                modified_md = modified_md[:match.start()] + replacement + modified_md[match.end():]
-                
+                # Absolute path for safety since pandoc may run from anywhere
+                abs_img_path = str(temp_images[i].resolve()).replace("\\", "/")
+                parts.append(f"![Diagram]({abs_img_path})")
+            else:
+                # Diagram failed to render; keep the original mermaid block
+                parts.append(match.group(0))
+            last_end = match.end()
+        parts.append(md_text[last_end:])
+        modified_md = "".join(parts)
+
     else:
         modified_md = md_text
 
