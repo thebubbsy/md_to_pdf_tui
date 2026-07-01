@@ -8,6 +8,7 @@ on:
       - main
     paths:
       - 'winui3/**'
+      - 'global.json'
       - '.github/workflows/build-winui3.yml'
 
 jobs:
