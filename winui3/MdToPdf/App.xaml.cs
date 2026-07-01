@@ -25,7 +25,21 @@ public partial class App : Application
 
     protected override void OnLaunched(LaunchActivatedEventArgs args)
     {
-        MainAppWindow = new MainWindow();
-        MainAppWindow.Activate();
+        try
+        {
+            MainAppWindow = new MainWindow();
+            MainAppWindow.Activate();
+        }
+        catch (Exception ex)
+        {
+            try
+            {
+                System.IO.File.WriteAllText(
+                    System.IO.Path.Combine(AppContext.BaseDirectory, "startup-crash.log"),
+                    $"[App.OnLaunched] {DateTime.Now:O}{Environment.NewLine}{ex}");
+            }
+            catch { }
+            throw;
+        }
     }
 }
