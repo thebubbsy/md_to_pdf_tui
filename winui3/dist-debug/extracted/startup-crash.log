@@ -1,0 +1,9 @@
+[App.OnLaunched] 2026-07-02T06:52:12.2637732+10:00
+Microsoft.UI.Xaml.Markup.XamlParseException: XAML parsing failed.
+   at WinRT.ExceptionHelpers.<ThrowExceptionForHR>g__Throw|38_0(Int32 hr)
+   at WinRT.ExceptionHelpers.ThrowExceptionForHR(Int32 hr)
+   at ABI.Microsoft.UI.Xaml.IApplicationStaticsMethods.LoadComponent(IObjectReference _obj, Object component, Uri resourceLocator, ComponentResourceLocation componentResourceLocation)
+   at Microsoft.UI.Xaml.Application.LoadComponent(Object component, Uri resourceLocator, ComponentResourceLocation componentResourceLocation)
+   at MdToPdf.MainWindow.InitializeComponent() in D:\a\md_to_pdf_tui\md_to_pdf_tui\winui3\MdToPdf\obj\Debug\net8.0-windows10.0.19041.0\win-x64\MainWindow.g.i.cs:line 45
+   at MdToPdf.MainWindow..ctor() in D:\a\md_to_pdf_tui\md_to_pdf_tui\winui3\MdToPdf\MainWindow.xaml.cs:line 20
+   at MdToPdf.App.OnLaunched(LaunchActivatedEventArgs args) in D:\a\md_to_pdf_tui\md_to_pdf_tui\winui3\MdToPdf\App.xaml.cs:line 30
