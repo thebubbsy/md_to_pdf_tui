@@ -33,7 +33,7 @@ public sealed partial class MainViewModel : ObservableObject
     {
         get
         {
-            var words = PastedMarkdown.Split(' ', '\n', '\t', '\r', StringSplitOptions.RemoveEmptyEntries).Length;
+            var words = PastedMarkdown.Split(new[] { ' ', '\n', '\t', '\r' }, StringSplitOptions.RemoveEmptyEntries).Length;
             return $"{words} words · {PastedMarkdown.Length} chars";
         }
     }
