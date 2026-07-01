@@ -1,0 +1,60 @@
+<UserControl
+    x:Class="MdToPdf.Views.ConvertView"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="using:MdToPdf.Views">
+
+    <ScrollViewer VerticalScrollBarVisibility="Auto">
+        <StackPanel Padding="16" Spacing="12" MaxWidth="520">
+
+            <TextBlock Text="Files" Style="{StaticResource SubtitleTextBlockStyle}" />
+            <Grid ColumnSpacing="8">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <TextBox Grid.Column="0" Text="{Binding InputFilePath, Mode=TwoWay}" PlaceholderText="Select a Markdown file..." />
+                <Button Grid.Column="1" Content="Browse" Click="OnBrowseFileClick" />
+            </Grid>
+
+            <ComboBox Header="Recent files" ItemsSource="{Binding RecentFiles}"
+                      SelectionChanged="OnRecentSelectionChanged" HorizontalAlignment="Stretch" />
+
+            <Grid ColumnSpacing="8">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <TextBox Grid.Column="0" Text="{Binding OutputFolder, Mode=TwoWay}" Header="Output folder" PlaceholderText="Defaults to next to the input file" />
+                <Button Grid.Column="1" Content="Browse" Click="OnBrowseFolderClick" VerticalAlignment="Bottom" />
+            </Grid>
+
+            <ToggleSwitch Header="Use paste source instead of a file" IsOn="{Binding UsePasteSource, Mode=TwoWay}" />
+
+            <Rectangle Height="1" Fill="{ThemeResource CardStrokeColorDefaultBrush}" Margin="0,4" />
+
+            <TextBlock Text="Aesthetics" Style="{StaticResource SubtitleTextBlockStyle}" />
+            <ComboBox Header="Theme" ItemsSource="{Binding ThemeNames}" SelectedItem="{Binding SelectedThemeName, Mode=TwoWay}" HorizontalAlignment="Stretch" />
+            <NumberBox Header="Page width (px)" Value="{Binding ContentWidth, Mode=TwoWay}" SpinButtonPlacementMode="Inline" Minimum="400" Maximum="2400" />
+
+            <Rectangle Height="1" Fill="{ThemeResource CardStrokeColorDefaultBrush}" Margin="0,4" />
+
+            <TextBlock Text="Page layout" Style="{StaticResource SubtitleTextBlockStyle}" />
+            <ToggleSwitch Header="Lock to A4 width" IsOn="{Binding A4FixedWidth, Mode=TwoWay}" />
+            <ToggleSwitch Header="Single continuous page (no page breaks)" IsOn="{Binding UnlimitedHeight, Mode=TwoWay}" />
+
+            <Rectangle Height="1" Fill="{ThemeResource CardStrokeColorDefaultBrush}" Margin="0,4" />
+
+            <InfoBar IsOpen="True" Severity="Informational" IsClosable="False" Message="{Binding StatusText}" />
+
+            <StackPanel Orientation="Horizontal" Spacing="8">
+                <Button x:Name="ConvertPdfButton" Content="Generate PDF" Style="{StaticResource AccentButtonStyle}" Click="OnConvertPdfClick" IsEnabled="{Binding IsNotBusy}" />
+                <Button Content="Export DOCX" Click="OnConvertDocxClick" IsEnabled="{Binding IsNotBusy}" />
+                <Button Content="Cancel" Command="{Binding CancelConversionCommand}" IsEnabled="{Binding IsBusy}" />
+                <ProgressRing IsActive="{Binding IsBusy}" Width="24" Height="24" />
+            </StackPanel>
+
+            <Button Content="Open last output" Click="OnOpenOutputClick" IsEnabled="{Binding HasOutput}" />
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

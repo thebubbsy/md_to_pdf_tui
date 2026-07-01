@@ -1,6 +1,6 @@
 # Markdown to PDF Converter TUI (Pro Suite)
 
-**MDPDFM PRO v3.0** is a feature-rich, no-nonsense Markdown to PDF/DOCX/PNG converter. It features a modern Terminal User Interface (TUI) powered by Textual, high-quality rendering via Playwright, and specialized support for advanced documentation styles (alerts, themes).
+**MDPDFM PRO v3.1** is a feature-rich, no-nonsense Markdown to PDF/DOCX/PNG converter. It features a modern Terminal User Interface (TUI) powered by Textual, high-quality rendering via Playwright, and specialized support for advanced documentation styles (alerts, themes).
 
 ## Features
 
@@ -11,7 +11,12 @@
 -   **Mermaid Diagrams**: Native support for rendering Mermaid.js diagrams.
 -   **Alert Blocks**: GitHub-flavored alert blocks (Note, Tip, Important, Warning, Caution) are fully styled.
 -   **Theming**: Includes 10+ themes (GitHub Light/Dark, Solarized, Dracula, Cyberpunk, etc.).
+-   **Configurable Page Width**: Set the content width (px) used for PDF/PNG/DOCX diagram rendering.
+-   **Recent Files**: Quickly reopen recently converted files from a dropdown in the Settings tab.
+-   **Cancellable Exports**: Cancel an in-progress PDF/DOCX conversion mid-run.
+-   **Live Word Count**: The Paste & Preview editor shows a running word/character count.
 -   **Headless Mode**: Run from scripts or CLI for automated pipelines.
+-   **Batch Mode**: Convert every Markdown file in a folder (or matching a glob) in one headless command.
 -   **Gallery Mode**: Automatically generate PNG previews of a document in all available themes.
 
 <img width="1919" height="1028" alt="image" src="https://github.com/user-attachments/assets/2e5f064a-6a48-4e10-891b-7f42376fad0b" />
@@ -65,6 +70,7 @@ python md_to_pdf_tui.py input.md --headless [flags]
 -   `--docx`: Output as DOCX.
 -   `--png`: Output as PNG.
 -   `--gallery`: Generate PNGs in all available themes.
+-   `--batch <folder-or-glob>`: Convert every Markdown file in a folder (or matching a glob pattern) in one run, reusing a single browser instance.
 -   `--open`: Open the file after generation.
 -   `--[theme]`: Apply a specific theme (e.g., `--github-dark`, `--dracula`).
 
@@ -76,6 +82,12 @@ python md_to_pdf_tui.py report.md --headless --dracula
 
 # Generate DOCX
 python md_to_pdf_tui.py report.md --headless --docx
+
+# Convert every .md file in a folder to PDF
+python md_to_pdf_tui.py --headless --batch docs/ --dracula
+
+# Convert files matching a glob to DOCX
+python md_to_pdf_tui.py --headless --batch "docs/**/*.md" --docx
 ```
 
 ## Themes

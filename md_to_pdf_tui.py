@@ -1,8 +1,9 @@
 """
-Markdown to PDF Converter TUI v2.8.2 Pro - Suite
+Markdown to PDF Converter TUI v3.1 Pro - Suite
 The most feature-rich version ever. Zero-bullshit logic.
 Now with background CLI mode for automated exports and high-contrast light-mode.
-Added themes and png output to docx
+Added themes and png output to docx. Recent files, batch headless conversion,
+cancellable exports, and configurable page width.
 """
 
 import asyncio
@@ -55,7 +56,6 @@ from mdit_py_plugins.footnote import footnote_plugin
 CONFIG_DIR = Path.home() / ".md_to_pdf"
 RECENT_FILES_PATH = CONFIG_DIR / "recent_files.json"
 SETTINGS_PATH = CONFIG_DIR / "settings.json"
-MAX_RECENT_FILES = 10
 MAX_RECENT_FILES = 10
 A4_WIDTH_PX = 800
 
@@ -906,6 +906,7 @@ if HAS_TEXTUAL:
         #docx-btn { background: #1f6feb; color: white; width: 22; margin-left: 1; }
         #preview-controls { height: 3; align: right middle; padding-right: 1; }
         #editor-toolbar { height: 3; margin-bottom: 1; align: left middle; background: #21262d; padding-left: 1; }
+        #word-count { width: 1fr; text-align: right; padding-right: 2; color: #8b949e; }
         .tool-btn { min-width: 5; margin-right: 1; height: 1; background: #30363d; border: none; }
         .tool-btn:hover { background: #58a6ff; color: #161b22; }
         .icon-btn { width: 5; min-width: 5; margin-left: 1; height: 1; background: #30363d; border: none; }
@@ -931,7 +932,6 @@ if HAS_TEXTUAL:
                 log_msg = f"[{color}]{title}: {message}[/]" if title else f"[{color}]{message}[/]"
                 self.query_one("#log", RichLog).write(log_msg)
 
-            import threading
             if getattr(self, "_thread_id", None) == threading.get_ident():
                 _do_notify()
             else:
@@ -1014,6 +1014,9 @@ The file `{filepath}` could not be found.
                                 yield Label("Output Folder:"); yield Input(value=self.settings.get("output_folder", ""), id="out-input", placeholder="Leave empty to save alongside input file"); yield Button("Browse", id="browse-out-btn", tooltip="Select destination folder for generated files"); yield Button("📂", id="btn-open-folder", classes="icon-btn", tooltip="Open Output Folder")
                             with Horizontal(classes="row"):
                                 yield Label("Use Paste:"); yield Switch(value=False, id="source-switch", tooltip="Toggle between file input and text editor")
+                            with Horizontal(classes="row"):
+                                yield Label("Recent:")
+                                yield Select(self.recent_file_options(), allow_blank=True, prompt="Select a recent file...", id="recent-select", tooltip="Quickly reopen a recently converted file")
                         with Container(classes="section"):
                             yield Static("🎨 AESTHETICS")
                             with Horizontal(classes="row"):
@@ -1021,6 +1024,8 @@ The file `{filepath}` could not be found.
                                 theme_select = Select.from_values(list(THEMES.keys()), allow_blank=False, value=self.settings.get("theme", "GitHub Light"), id="theme-select")
                                 theme_select.tooltip = "Select color theme for PDF/DOCX output"
                                 yield theme_select
+                            with Horizontal(classes="row"):
+                                yield Label("Page Width:"); yield Input(value=str(self.settings.get("content_width", 800)), id="width-input", placeholder="800", tooltip="Content width in pixels for PDF/PNG/DOCX diagrams")
                         with Container(classes="section"):
                             yield Static("⚙️ OPTIONS")
                             with Horizontal(classes="row"):
@@ -1041,6 +1046,7 @@ The file `{filepath}` could not be found.
                         yield Button("H1", id="btn-h1", classes="tool-btn", tooltip="Heading 1 (# text)")
                         yield Button("H2", id="btn-h2", classes="tool-btn", tooltip="Heading 2 (## text)")
                         yield Button("H3", id="btn-h3", classes="tool-btn", tooltip="Heading 3 (### text)")
+                        yield Static("0 words · 0 chars", id="word-count")
 
                     with Horizontal(id="preview-controls"):
                          yield Button("👁️ TUI Preview", id="toggle-view-btn", disabled=True, variant="primary", tooltip="Preview the rendered markdown")
@@ -1051,8 +1057,9 @@ The file `{filepath}` could not be found.
                         with VerticalScroll(id="md-view"):
                             yield Markdown(id="md-preview")
                         yield TextArea(id="paste-area")
-            with Horizontal(id="button-bar"): 
+            with Horizontal(id="button-bar"):
                 yield Button("📄 Open File", id="open-btn", disabled=True, tooltip="Open the last generated PDF/DOCX file")
+                yield Button("✖ Cancel", id="cancel-btn", disabled=True, variant="error", tooltip="Cancel the in-progress conversion")
                 yield Button("📝 Export DOCX", id="docx-btn", tooltip="Convert the current Markdown to a Word document")
                 yield Button("▶ GENERATE PDF", id="convert-btn", tooltip="Convert the current Markdown to a PDF file")
             yield Footer()
@@ -1068,10 +1075,26 @@ The file `{filepath}` could not be found.
                 self.query_one("#paste-area", TextArea).text = self.paste_content
                 self.query_one("#source-switch", Switch).value = True
         
+        def recent_file_options(self) -> list[tuple[str, str]]:
+            return [(Path(f).name, f) for f in self.recent_files]
+
+        def refresh_recent_files(self) -> None:
+            self.recent_files = load_recent_files()
+            try:
+                select = self.query_one("#recent-select", Select)
+                select.set_options(self.recent_file_options())
+            except Exception:
+                pass
+
         def on_select_changed(self, event: Select.Changed):
             if event.select.id == "theme-select":
                 self.settings["theme"] = str(event.value)
                 save_settings(self.settings)
+            elif event.select.id == "recent-select":
+                if event.value is not Select.BLANK:
+                    path = str(event.value)
+                    self.query_one("#md-input", Input).value = path
+                    self.update_file_preview(path)
 
         def on_switch_changed(self, event: Switch.Changed):
             if event.switch.id == "a4-width-switch": self.settings["a4_fixed_width"] = event.value
@@ -1101,10 +1124,25 @@ The file `{filepath}` could not be found.
             if event.input.id == "md-input":
                 self.update_file_preview(event.value)
 
+        def on_text_area_changed(self, event: TextArea.Changed):
+            if event.text_area.id == "paste-area":
+                text = event.text_area.text
+                words = len(text.split())
+                try:
+                    self.query_one("#word-count", Static).update(f"{words} words · {len(text)} chars")
+                except Exception:
+                    pass
+
         def on_input_changed(self, event: Input.Changed):
              if event.input.id == "out-input":
                  self.settings["output_folder"] = event.value
                  save_settings(self.settings)
+             elif event.input.id == "width-input":
+                 try:
+                     self.settings["content_width"] = int(event.value)
+                     save_settings(self.settings)
+                 except ValueError:
+                     pass
 
         def handle_editor_button(self, btn_id: str) -> None:
             ta = self.query_one("#paste-area", TextArea)
@@ -1143,6 +1181,7 @@ The file `{filepath}` could not be found.
             if event.button.id == "convert-btn": self.action_convert()
             elif event.button.id == "docx-btn": self.action_convert_docx()
             elif event.button.id == "open-btn": self.action_open_pdf()
+            elif event.button.id == "cancel-btn": self.action_cancel_conversion()
             elif event.button.id == "browse-btn": self.action_browse_file()
             elif event.button.id == "browse-out-btn":
                 d = open_folder_dialog()
@@ -1206,10 +1245,16 @@ The file `{filepath}` could not be found.
                 self.update_file_preview(f)
 
         def action_convert(self):
-            self.run_conversion(fmt="pdf")
+            self._active_worker = self.run_conversion(fmt="pdf")
 
         def action_convert_docx(self):
-            self.run_conversion(fmt="docx")
+            self._active_worker = self.run_conversion(fmt="docx")
+
+        def action_cancel_conversion(self):
+            worker = getattr(self, "_active_worker", None)
+            if worker is not None:
+                worker.cancel()
+                self.query_one("#log", RichLog).write("[yellow]Cancelled by user.[/]")
 
         def action_show_help(self):
             self.push_screen(HelpScreen())
@@ -1384,6 +1429,7 @@ The file `{filepath}` could not be found.
                 try:
                     btn = self.query_one(btn_id, Button)
                     btn.loading = is_loading
+                    self.query_one("#cancel-btn", Button).disabled = not is_loading
                 except Exception:
                     pass
 
@@ -1429,9 +1475,8 @@ The file `{filepath}` could not be found.
                             log(f"[green]✓ DOCX Export Done: {str(opath)}[/]")
                             self.notify_user(f"Export Done: {opath.name}", title="Success")
                         else:
-                            # Check for pure mermaid
-                            if is_pure_mermaid(processed_text) and fmt != "docx":
-                                pass
+                            if is_pure_mermaid(processed_text):
+                                log("[cyan]Tip: this is a single diagram — PNG export usually looks tighter than a full A4 PDF page.[/]")
 
                             await generate_pdf_core(ipath, opath, self.settings, log, prog)
                             log(f"[green]✓ PDF Export Done: {str(opath)}[/]")
@@ -1469,12 +1514,44 @@ The file `{filepath}` could not be found.
                         self.notify_user(f"Export Done: {opath.name}", title="Success")
 
                     self.last_output_path = opath
+                    self.recent_files = add_to_recent(str(ipath))
+                    self.refresh_recent_files()
                     enable_btn()
             except Exception as e:
                 log(f"[red]Error: {e}[/]")
                 self.notify_user(f"Error: {e}", title="Export Failed", severity="error")
             finally:
                 toggle_loading(False)
+
+def _resolve_batch_files(pattern: str) -> list[Path]:
+    p = Path(pattern)
+    if p.is_dir():
+        return sorted(p.glob("*.md")) + sorted(p.glob("*.markdown"))
+    matches = sorted(Path().glob(pattern))
+    return [m for m in matches if m.suffix.lower() in (".md", ".markdown")]
+
+async def run_batch_mode(pattern: str, settings: dict, fmt: str) -> None:
+    files = _resolve_batch_files(pattern)
+    if not files:
+        print(f"No markdown files matched: {pattern}")
+        return
+    print(f"--- Batch Mode: {len(files)} file(s) -> .{fmt} ---")
+    async with async_playwright() as p:
+        browser = await p.chromium.launch()
+        for f in files:
+            out = f.with_suffix(f".{fmt}")
+            print(f"Converting: {f.name} -> {out.name}")
+            try:
+                if fmt == "docx":
+                    await generate_docx_core(f, out, settings=settings, browser=browser)
+                elif fmt == "png":
+                    await generate_png_core(f, out, settings, browser=browser)
+                else:
+                    await generate_pdf_core(f, out, settings, browser=browser)
+            except Exception as e:
+                print(f"  FAILED: {e}")
+        await browser.close()
+    print("Batch conversion complete.")
 
 async def run_gallery_mode(md_path: Path) -> None:
     print("--- Gallery Mode: Generating for all themes ---")
@@ -1510,12 +1587,26 @@ def main():
     if len(sys.argv) > 1 or content_arg:
         if len(sys.argv) > 1 and sys.argv[1] in ["--help", "-h"]:
             print("Usage: python md_to_pdf_tui.py [input.md] [output] [flags]")
-            print("Flags: --headless, --docx, --png, --gallery, --open, --light, --dark, --content 'markdown text'")
+            print("Flags: --headless, --docx, --png, --gallery, --batch <folder-or-glob>, --open, --light, --dark, --content 'markdown text'")
             return
         
         if "--headless" in sys.argv:
             print("--- MDPDFM Background Engine starting ---")
-            
+
+            if "--batch" in sys.argv:
+                idx = sys.argv.index("--batch")
+                if idx + 1 >= len(sys.argv):
+                    print("Error: --batch requires a folder or glob pattern, e.g. --batch docs/*.md")
+                    sys.exit(1)
+                batch_pattern = sys.argv[idx + 1]
+                settings = load_settings()
+                chosen_theme = next((THEME_SLUGS[arg] for arg in sys.argv if arg in THEME_SLUGS), None)
+                if chosen_theme:
+                    settings["theme"] = chosen_theme
+                fmt = "docx" if "--docx" in sys.argv else ("png" if "--png" in sys.argv else "pdf")
+                asyncio.run(run_batch_mode(batch_pattern, settings, fmt))
+                return
+
             temp_dir = None
             md_path = None
 

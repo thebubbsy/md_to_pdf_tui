@@ -32,3 +32,9 @@ preview.html
 .md_to_pdf/
 settings.json
 recent_files.json
+
+# .NET / WinUI 3 build artifacts (winui3/MdToPdf)
+bin/
+obj/
+*.user
+

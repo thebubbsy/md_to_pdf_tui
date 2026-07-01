@@ -1,0 +1,46 @@
+name: Build WinUI3 App
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - winui3-app
+      - main
+    paths:
+      - 'winui3/**'
+      - '.github/workflows/build-winui3.yml'
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Restore
+        run: dotnet restore winui3/MdToPdf/MdToPdf.csproj
+
+      - name: Publish self-contained win-x64
+        run: >
+          dotnet publish winui3/MdToPdf/MdToPdf.csproj
+          -c Release
+          -r win-x64
+          --self-contained true
+          -p:WindowsAppSDKSelfContained=true
+          -p:WindowsPackageType=None
+          -o publish/win-x64
+
+      - name: Zip published output
+        shell: pwsh
+        run: Compress-Archive -Path publish/win-x64/* -DestinationPath MdToPdf-win-x64-selfcontained.zip
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: MdToPdf-win-x64-selfcontained
+          path: MdToPdf-win-x64-selfcontained.zip
+          retention-days: 14
