@@ -11,6 +11,9 @@ on:
       - 'global.json'
       - '.github/workflows/build-winui3.yml'
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: windows-latest
@@ -30,13 +33,13 @@ jobs:
         uses: microsoft/setup-msbuild@v2
 
       - name: Restore
-        run: msbuild winui3\MdToPdf\MdToPdf.csproj -t:Restore -p:Configuration=Release -p:RuntimeIdentifier=win-x64
+        run: msbuild winui3\MdToPdf\MdToPdf.csproj -t:Restore -p:Configuration=Debug -p:RuntimeIdentifier=win-x64
 
       - name: Publish self-contained win-x64
         run: >
           msbuild winui3\MdToPdf\MdToPdf.csproj
           -t:Publish
-          -p:Configuration=Release
+          -p:Configuration=Debug
           -p:RuntimeIdentifier=win-x64
           -p:SelfContained=true
           -p:WindowsAppSDKSelfContained=true
@@ -48,9 +51,26 @@ jobs:
         shell: pwsh
         run: Compress-Archive -Path publish/win-x64/* -DestinationPath MdToPdf-win-x64-selfcontained.zip
 
+      # actions/upload-artifact@v4 already uses GitHub's newer artifact backend
+      # (resumable uploads, immutable content-addressed storage) - no extra opt-in needed.
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: MdToPdf-win-x64-selfcontained
           path: MdToPdf-win-x64-selfcontained.zip
           retention-days: 14
+
+      # Releases are served from GitHub's Fastly CDN rather than Actions' artifact
+      # blob storage, which is far more reliable for large files over constrained
+      # networks. Re-uses one floating tag/release so every push just replaces the asset.
+      - name: Publish dev build to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: winui3-dev-build
+          name: "WinUI3 dev build (win-x64, self-contained)"
+          body: |
+            Automatically rebuilt from `${{ github.sha }}` on every push to `winui3-app`/`main` that touches `winui3/`.
+            Unzip and run `MdToPdf.exe` - self-contained, no .NET or Windows App SDK install required.
+          prerelease: true
+          make_latest: false
+          files: MdToPdf-win-x64-selfcontained.zip
