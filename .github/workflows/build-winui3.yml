@@ -41,7 +41,7 @@ jobs:
           -p:SelfContained=true
           -p:WindowsAppSDKSelfContained=true
           -p:WindowsPackageType=None
-          -p:PublishDir=publish\win-x64\
+          -p:PublishDir=${{ github.workspace }}\publish\win-x64\
           -m
 
       - name: Zip published output
