@@ -22,18 +22,27 @@ jobs:
         with:
           dotnet-version: '8.0.x'
 
+      # dotnet publish's CoreCLR-hosted MSBuild cannot load the WinUI3 packaging
+      # tasks (XamlCompiler/PRI generation), which are legacy .NET Framework
+      # (net472) assemblies — see https://github.com/microsoft/WindowsAppSDK/issues/3939.
+      # Only the full-framework MSBuild.exe that ships with Visual Studio can load them.
+      - name: Setup MSBuild
+        uses: microsoft/setup-msbuild@v2
+
       - name: Restore
-        run: dotnet restore winui3/MdToPdf/MdToPdf.csproj
+        run: msbuild winui3\MdToPdf\MdToPdf.csproj -t:Restore -p:Configuration=Release -p:RuntimeIdentifier=win-x64
 
       - name: Publish self-contained win-x64
         run: >
-          dotnet publish winui3/MdToPdf/MdToPdf.csproj
-          -c Release
-          -r win-x64
-          --self-contained true
+          msbuild winui3\MdToPdf\MdToPdf.csproj
+          -t:Publish
+          -p:Configuration=Release
+          -p:RuntimeIdentifier=win-x64
+          -p:SelfContained=true
           -p:WindowsAppSDKSelfContained=true
           -p:WindowsPackageType=None
-          -o publish/win-x64
+          -p:PublishDir=publish\win-x64\
+          -m
 
       - name: Zip published output
         shell: pwsh
