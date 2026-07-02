@@ -33,19 +33,39 @@ jobs:
         uses: microsoft/setup-msbuild@v2
 
       - name: Restore
-        run: msbuild winui3\MdToPdf\MdToPdf.csproj -t:Restore -p:Configuration=Debug -p:RuntimeIdentifier=win-x64
+        run: msbuild winui3\MdToPdf\MdToPdf.csproj -t:Restore -p:Configuration=Release -p:RuntimeIdentifier=win-x64
 
       - name: Publish self-contained win-x64
         run: >
           msbuild winui3\MdToPdf\MdToPdf.csproj
           -t:Publish
-          -p:Configuration=Debug
+          -p:Configuration=Release
           -p:RuntimeIdentifier=win-x64
           -p:SelfContained=true
           -p:WindowsAppSDKSelfContained=true
           -p:WindowsPackageType=None
           -p:PublishDir=${{ github.workspace }}\publish\win-x64\
           -m
+
+      # msbuild -t:Publish generates the app's own resources.pri (compiled XAML/XBF for
+      # MainWindow etc.) into bin\ but does not include it in the publish file list — an
+      # unpackaged-WinUI3 gap. Without it, Application.LoadComponent throws XamlParseException
+      # ("XAML parsing failed.") at startup because there is no compiled XAML to load.
+      - name: Copy resources.pri into publish output
+        shell: pwsh
+        run: |
+          $pri = Get-ChildItem -Recurse winui3\MdToPdf\bin -Filter resources.pri | Select-Object -First 1
+          if (-not $pri) { throw "resources.pri not found anywhere under bin\ - the app would crash at startup." }
+          Copy-Item $pri.FullName publish\win-x64\resources.pri
+          Write-Host "Copied $($pri.FullName)"
+
+      - name: Verify publish output is runnable
+        shell: pwsh
+        run: |
+          foreach ($required in @("MdToPdf.exe", "resources.pri", "Microsoft.ui.xaml.dll")) {
+            if (-not (Test-Path "publish\win-x64\$required")) { throw "Missing required file: $required" }
+          }
+          Write-Host "All required files present."
 
       - name: Zip published output
         shell: pwsh
