@@ -10,7 +10,10 @@
     <Platforms>x86;x64;arm64</Platforms>
     <RuntimeIdentifiers>win-x86;win-x64;win-arm64</RuntimeIdentifiers>
     <UseWinUI>true</UseWinUI>
-    <EnableMsixTooling>false</EnableMsixTooling>
+    <!-- Required true even for unpackaged apps: gates the PRI-generation targets that produce
+         resources.pri (the compiled XAML the app loads at startup). With this false, the app
+         builds fine but dies at launch with XamlParseException because resources.pri is missing. -->
+    <EnableMsixTooling>true</EnableMsixTooling>
     <DefineConstants>$(DefineConstants);DISABLE_XAML_GENERATED_MAIN</DefineConstants>
     <WindowsPackageType>None</WindowsPackageType>
     <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>

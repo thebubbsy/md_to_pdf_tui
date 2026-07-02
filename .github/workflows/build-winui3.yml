@@ -54,8 +54,13 @@ jobs:
       - name: Copy resources.pri into publish output
         shell: pwsh
         run: |
-          $pri = Get-ChildItem -Recurse winui3\MdToPdf\bin -Filter resources.pri | Select-Object -First 1
-          if (-not $pri) { throw "resources.pri not found anywhere under bin\ - the app would crash at startup." }
+          if (Test-Path publish\win-x64\resources.pri) { Write-Host "Already in publish output."; exit 0 }
+          $pri = Get-ChildItem -Recurse winui3\MdToPdf\bin, winui3\MdToPdf\obj -Include resources.pri, MdToPdf.pri -ErrorAction SilentlyContinue | Select-Object -First 1
+          if (-not $pri) {
+            Write-Host "All .pri files under the project (for diagnosis):"
+            Get-ChildItem -Recurse winui3\MdToPdf -Filter *.pri -ErrorAction SilentlyContinue | ForEach-Object { Write-Host "  $($_.FullName)" }
+            throw "App pri file not found - the app would crash at startup with XamlParseException."
+          }
           Copy-Item $pri.FullName publish\win-x64\resources.pri
           Write-Host "Copied $($pri.FullName)"
 
