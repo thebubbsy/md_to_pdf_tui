@@ -38,3 +38,7 @@ bin/
 obj/
 *.user
 
+# Locally downloaded CI builds
+winui3/dist/
+winui3/dist-debug/
+

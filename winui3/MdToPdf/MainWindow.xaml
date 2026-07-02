@@ -10,10 +10,36 @@
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
 
+        <!-- Custom title bar so Mica shows through behind it; extended via Window.ExtendsContentIntoTitleBar in code-behind -->
         <Grid x:Name="AppTitleBar" Grid.Row="0" Height="40">
-            <TextBlock Text="MDPDFM Pro" VerticalAlignment="Center" Margin="16,0,0,0" />
+            <TextBlock Text="MDPDFM Pro" VerticalAlignment="Center" Margin="16,0,0,0"
+                       Style="{StaticResource CaptionTextBlockStyle}" />
         </Grid>
 
-        <TextBlock Grid.Row="1" Text="Minimal test window" HorizontalAlignment="Center" VerticalAlignment="Center" />
+        <Grid Grid.Row="1" ColumnSpacing="0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="540" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+
+            <TabView Grid.Column="0" IsAddTabButtonVisible="False" TabWidthMode="SizeToContent">
+                <TabViewItem Header="Convert" IsClosable="False">
+                    <TabViewItem.IconSource>
+                        <SymbolIconSource Symbol="Document" />
+                    </TabViewItem.IconSource>
+                    <views:ConvertView x:Name="ConvertPanel" />
+                </TabViewItem>
+                <TabViewItem Header="Paste &amp; Preview" IsClosable="False">
+                    <TabViewItem.IconSource>
+                        <SymbolIconSource Symbol="Edit" />
+                    </TabViewItem.IconSource>
+                    <views:EditorView x:Name="EditorPanel" />
+                </TabViewItem>
+            </TabView>
+
+            <Border Grid.Column="1" Background="{ThemeResource LayerFillColorDefaultBrush}" Margin="0,0,8,8" CornerRadius="8">
+                <WebView2 x:Name="PreviewWebView" Margin="1" />
+            </Border>
+        </Grid>
     </Grid>
 </Window>
